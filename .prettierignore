@@ -1,0 +1,16 @@
+# Package and dependency directories
+node_modules/
+package-lock.json
+
+# Build outputs
+www/
+dist/
+.angular/
+
+# Native platforms (Capacitor manages these)
+android/
+ios/
+
+# Cache and IDE
+.git/
+.vscode/

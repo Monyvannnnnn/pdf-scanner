@@ -1,5 +1,6 @@
 {
-    "recommendations": [
-       "Webnative.webnative"
-    ]
+  "recommendations": [
+    "Webnative.webnative",
+    "esbenp.prettier-vscode"
+  ]
 }

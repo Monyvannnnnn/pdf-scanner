@@ -1,4 +1,18 @@
 {
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+  "[html]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[scss]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
   // Keeps VS Code from suggesting Ionic components off the entry points this app
   // does not use. Patterns are matched against resolved .d.ts paths, not import
   // specifiers, so they name @ionic/angular's actual type files. Never use a bare

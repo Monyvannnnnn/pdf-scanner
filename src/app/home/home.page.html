@@ -1,20 +1,30 @@
-<ion-header [translucent]="true">
-  <ion-toolbar>
-    <ion-title>
-      Blank
-    </ion-title>
-  </ion-toolbar>
-</ion-header>
+<ion-content class="ion-padding">
+  <div class="ion-text-center" style="margin-top: 50px">
+    <h3>Document Scanner & Uploader</h3>
+    <p>Test on Web (File) or Mobile (Scanner)</p>
 
-<ion-content [fullscreen]="true">
-  <ion-header collapse="condense">
-    <ion-toolbar>
-      <ion-title size="large">Blank</ion-title>
-    </ion-toolbar>
-  </ion-header>
+    <!-- Mobile Scanner Button -->
+    <ion-button expand="block" (click)="startScan()">
+      <ion-icon name="camera" slot="start"></ion-icon>
+      Open Mobile Scanner
+    </ion-button>
 
-  <div id="container">
-    <strong>Ready to create an app?</strong>
-    <p>Start with Ionic <a target="_blank" rel="noopener noreferrer" href="https://ionicframework.com/docs/components">UI Components</a></p>
+    <div style="margin: 30px 0; border-top: 1px solid #ccc; padding-top: 20px">
+      <p><b>Or upload from PC:</b></p>
+
+      <!-- Web File Picker -->
+      <input
+        type="file"
+        accept="application/pdf,image/*"
+        (change)="onFileSelected($event)"
+      />
+    </div>
+
+    <!-- Upload Status / Path -->
+    @if (filePath) {
+      <p style="margin-top: 20px; color: green; word-break: break-all">
+        File ready: {{ filePath }}
+      </p>
+    }
   </div>
 </ion-content>
