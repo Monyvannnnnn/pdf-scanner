@@ -1,0 +1,7 @@
+{
+  "name": "DocumentScannerApp",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "angular-standalone"
+}
