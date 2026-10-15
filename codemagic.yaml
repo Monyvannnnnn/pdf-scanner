@@ -66,6 +66,9 @@ workflows:
             -destination "generic/platform=iOS Simulator" \
             CODE_SIGNING_ALLOWED=NO
     artifacts:
+      - build/**/*.app
+      - build/**/*.ipa
+      - build/**/*.log
       - /tmp/xcodebuild_logs/*.log
     publishing:
       email:
