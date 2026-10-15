@@ -1,0 +1,73 @@
+workflows:
+  ionic-capacitor-android:
+    name: Ionic Capacitor Android
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    environment:
+      node: 20
+      java: 17
+    scripts:
+      - name: Set up local.properties
+        script: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/android/local.properties"
+      - name: Install npm dependencies
+        script: |
+          npm install
+      - name: Build web code
+        script: |
+          npm run build
+      - name: Sync native Android project
+        script: |
+          npx cap sync android
+      - name: Build Android APK
+        script: |
+          cd android
+          ./gradlew assembleDebug
+    artifacts:
+      - android/app/build/outputs/**/*.apk
+      - android/app/build/outputs/**/*.aab
+    publishing:
+      email:
+        recipients:
+          - kimhak.prome@gmail.com
+        notify:
+          success: true
+          failure: false
+
+  ionic-capacitor-ios:
+    name: Ionic Capacitor iOS
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    environment:
+      node: 20
+      xcode: latest
+      cocoapods: default
+      vars:
+        XCODE_PROJECT: "ios/App/App.xcodeproj"
+        XCODE_SCHEME: "App"
+    scripts:
+      - name: Install npm dependencies
+        script: |
+          npm install
+      - name: Build web code
+        script: |
+          npm run build
+      - name: Sync native iOS project
+        script: |
+          npx cap sync ios
+      - name: Build iOS project
+        script: |
+          xcodebuild build \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination "generic/platform=iOS Simulator" \
+            CODE_SIGNING_ALLOWED=NO
+    artifacts:
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      email:
+        recipients:
+          - kimhak.prome@gmail.com
+        notify:
+          success: true
+          failure: false
