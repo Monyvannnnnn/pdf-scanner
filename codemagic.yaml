@@ -4,8 +4,10 @@ workflows:
     max_build_duration: 120
     instance_type: mac_mini_m2
     environment:
-      node: 20
+      node: latest
       java: 17
+      vars:
+        NG_FORCE_NODE_VERSION_CHECK: "true"
     scripts:
       - name: Set up local.properties
         script: |
@@ -39,10 +41,11 @@ workflows:
     max_build_duration: 120
     instance_type: mac_mini_m2
     environment:
-      node: 20
+      node: latest
       xcode: latest
       cocoapods: default
       vars:
+        NG_FORCE_NODE_VERSION_CHECK: "true"
         XCODE_PROJECT: "ios/App/App.xcodeproj"
         XCODE_SCHEME: "App"
     scripts:
