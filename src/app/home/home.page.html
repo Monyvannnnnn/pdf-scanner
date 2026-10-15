@@ -1,30 +1,1030 @@
-<ion-content class="ion-padding">
-  <div class="ion-text-center" style="margin-top: 50px">
-    <h3>Document Scanner & Uploader</h3>
-    <p>Test on Web (File) or Mobile (Scanner)</p>
+<ion-content class="cs-viewport" [fullscreen]="true" [scrollEvents]="true" (ionScroll)="onIonScroll($event)">
+  <!-- Hidden File Input for uploading images -->
+  <input
+    type="file"
+    #fileInputRef
+    multiple
+    accept="image/*"
+    (change)="onFilesSelected($event)"
+    style="display: none"
+  />
 
-    <!-- Mobile Scanner Button -->
-    <ion-button expand="block" (click)="startScan()">
-      <ion-icon name="camera" slot="start"></ion-icon>
-      Open Mobile Scanner
-    </ion-button>
+  <!-- Hidden Camera Input for direct camera capture on Mobile -->
+  <input
+    type="file"
+    #cameraInputRef
+    accept="image/*"
+    capture="environment"
+    (change)="onFilesSelected($event)"
+    style="display: none"
+  />
 
-    <div style="margin: 30px 0; border-top: 1px solid #ccc; padding-top: 20px">
-      <p><b>Or upload from PC:</b></p>
+  <!-- MAIN STUDIO MODAL WINDOW -->
+  <div class="cs-window">
+    <!-- 1. Header Bar -->
+    <header class="cs-header" [class.scrolled]="isScrolled">
+      <div class="cs-header-brand">
+        <img
+          src="assets/FieldBi-Logo-Black.png"
+          alt="FieldBi - Connecting FMCG"
+          class="cs-brand-logo"
+        />
+        <div class="cs-brand-tag">
+          <span class="tag-preview">PDF</span>
+          <span class="tag-docs">SCANNER</span>
+        </div>
+        <div class="cs-brand-divider"></div>
+      </div>
 
-      <!-- Web File Picker -->
-      <input
-        type="file"
-        accept="application/pdf,image/*"
-        (change)="onFileSelected($event)"
-      />
+      <div class="cs-header-center"></div>
+
+      <div class="cs-header-actions">
+        <!-- Device Connect Pill (Screenshots 1, 2, 3) -->
+        <button
+          type="button"
+          class="header-connection-pill"
+          [class.connected]="isPeerConnected"
+          (click)="openSendToComputerSheet()"
+          title="Connect Device / Send to computer"
+        >
+          <span class="status-dot"></span>
+          <span>{{ isPeerConnected ? (connectedDeviceName || 'MacBook') : 'Connect' }}</span>
+        </button>
+
+        <button
+          type="button"
+          class="cs-back-btn desktop-only"
+          (click)="handleBack()"
+          title="Undo / Back"
+          aria-label="Undo / Back"
+        >
+          <svg
+            width="17"
+            height="17"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <polyline points="9 14 4 9 9 4"></polyline>
+            <path d="M20 20v-7a4 4 0 0 0-4-4H4"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- 2. Body: Fullscreen 3-Floating-Cards Layout -->
+    <div class="cs-body" [class.crop-active]="isCropMode" (scroll)="onBodyScroll($event)">
+      <!-- CARD 1 (LEFT): Scanly & Recent Scans (Desktop) -->
+      <aside class="cs-panel-scans desktop-only">
+        <h2 class="scans-app-title">Scanly</h2>
+
+        <button
+          type="button"
+          class="btn-new-scan"
+          (click)="openNewScanModal()"
+          title="Scan with phone / New scan"
+        >
+          + New scan
+        </button>
+
+        @if (pages.length > 0) {
+          <div class="scans-section-heading pages-heading">Pages ({{ pages.length }})</div>
+          <div class="cs-thumbs-list">
+            @for (page of pages; track page.id; let idx = $index) {
+              <div
+                class="thumb-card"
+                [class.active]="idx === activePageIndex"
+                (click)="selectPage(idx)"
+              >
+                <div class="thumb-img-box">
+                  <img [src]="page.displayDataUrl" [alt]="'Page ' + (idx + 1)" />
+                </div>
+                <span class="thumb-idx">{{ idx + 1 }}</span>
+              </div>
+            }
+
+            <button
+              type="button"
+              class="thumb-add-btn"
+              (click)="triggerUpload()"
+              title="Add Page / Image"
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+          </div>
+        } @else {
+          <div class="empty-scans-hint" (click)="openNewScanModal()" style="cursor: pointer;" title="Scan with phone">
+            <div class="empty-icon-wrap">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+              </svg>
+            </div>
+            <span class="empty-hint-title">No Scanned Pages</span>
+            <span class="empty-hint-desc">Click <b>+ New scan</b> to add your document</span>
+          </div>
+        }
+      </aside>
+
+      <!-- CARD 2 (CENTER): Main Document Stage with Title & Export PDF -->
+      <main class="cs-panel-stage">
+        <div class="stage-top-bar">
+          <div class="stage-doc-meta">
+            <h2 class="stage-filename">{{ activeDocFileName }}</h2>
+            <span class="stage-doc-count">
+              {{ pages.length === 0 ? 'No pages yet' : (pages.length + ' page' + (pages.length === 1 ? '' : 's')) }}
+            </span>
+          </div>
+          <button
+            type="button"
+            class="btn-export-pdf"
+            [class.active]="pages.length > 0"
+            (click)="confirmAndExport()"
+            [disabled]="pages.length === 0 || isProcessing"
+          >
+            Export PDF
+          </button>
+        </div>
+
+        <div class="stage-canvas-area">
+          @if (activePage) {
+            <div class="document-container">
+              @if (isCropMode) {
+                <!-- Interactive 4-Corner Perspective Cropping Area -->
+                <div class="crop-overlay-wrapper" #cropOverlayRef>
+                  <img
+                    [src]="activePage.originalDataUrl"
+                    alt="Crop Target"
+                    class="crop-image-target"
+                  />
+
+                  <!-- SVG Perspective Overlay -->
+                  <svg
+                    class="crop-svg-overlay"
+                    viewBox="0 0 100 100"
+                    preserveAspectRatio="none"
+                  >
+                    <!-- Darkened mask outside quadrilateral -->
+                    <path
+                      [attr.d]="cropQuadMaskPath"
+                      fill="rgba(15, 23, 42, 0.55)"
+                      fill-rule="evenodd"
+                    />
+
+                    <!-- Draggable interior body -->
+                    <polygon
+                      [attr.points]="cropQuadSvgPoints"
+                      fill="rgba(236, 31, 40, 0.06)"
+                      style="cursor: move;"
+                      (pointerdown)="startCropDrag('body', $event)"
+                    />
+
+                    <!-- Rule of thirds perspective grid lines -->
+                    @if (gridLineCoords; as g) {
+                      <line
+                        [attr.x1]="g.t1.x"
+                        [attr.y1]="g.t1.y"
+                        [attr.x2]="g.b1.x"
+                        [attr.y2]="g.b1.y"
+                        stroke="rgba(255, 255, 255, 0.45)"
+                        stroke-width="1"
+                        stroke-dasharray="2,2"
+                        vector-effect="non-scaling-stroke"
+                      />
+                      <line
+                        [attr.x1]="g.t2.x"
+                        [attr.y1]="g.t2.y"
+                        [attr.x2]="g.b2.x"
+                        [attr.y2]="g.b2.y"
+                        stroke="rgba(255, 255, 255, 0.45)"
+                        stroke-width="1"
+                        stroke-dasharray="2,2"
+                        vector-effect="non-scaling-stroke"
+                      />
+                      <line
+                        [attr.x1]="g.l1.x"
+                        [attr.y1]="g.l1.y"
+                        [attr.x2]="g.r1.x"
+                        [attr.y2]="g.r1.y"
+                        stroke="rgba(255, 255, 255, 0.45)"
+                        stroke-width="1"
+                        stroke-dasharray="2,2"
+                        vector-effect="non-scaling-stroke"
+                      />
+                      <line
+                        [attr.x1]="g.l2.x"
+                        [attr.y1]="g.l2.y"
+                        [attr.x2]="g.r2.x"
+                        [attr.y2]="g.r2.y"
+                        stroke="rgba(255, 255, 255, 0.45)"
+                        stroke-width="1"
+                        stroke-dasharray="2,2"
+                        vector-effect="non-scaling-stroke"
+                      />
+                    }
+
+                    <!-- Outer boundary quad line -->
+                    <polygon
+                      [attr.points]="cropQuadSvgPoints"
+                      fill="none"
+                      stroke="#ec1f28"
+                      stroke-width="2"
+                      vector-effect="non-scaling-stroke"
+                    />
+                  </svg>
+
+                  <!-- 4 Corner Handles -->
+                  <div
+                    class="quad-handle corner tl"
+                    [style.left.%]="activePage.cropQuad.tl.x"
+                    [style.top.%]="activePage.cropQuad.tl.y"
+                    (pointerdown)="startCropDrag('tl', $event)"
+                    title="Drag Top-Left Corner"
+                  >
+                    <span class="handle-inner"></span>
+                  </div>
+
+                  <div
+                    class="quad-handle corner tr"
+                    [style.left.%]="activePage.cropQuad.tr.x"
+                    [style.top.%]="activePage.cropQuad.tr.y"
+                    (pointerdown)="startCropDrag('tr', $event)"
+                    title="Drag Top-Right Corner"
+                  >
+                    <span class="handle-inner"></span>
+                  </div>
+
+                  <div
+                    class="quad-handle corner br"
+                    [style.left.%]="activePage.cropQuad.br.x"
+                    [style.top.%]="activePage.cropQuad.br.y"
+                    (pointerdown)="startCropDrag('br', $event)"
+                    title="Drag Bottom-Right Corner"
+                  >
+                    <span class="handle-inner"></span>
+                  </div>
+
+                  <div
+                    class="quad-handle corner bl"
+                    [style.left.%]="activePage.cropQuad.bl.x"
+                    [style.top.%]="activePage.cropQuad.bl.y"
+                    (pointerdown)="startCropDrag('bl', $event)"
+                    title="Drag Bottom-Left Corner"
+                  >
+                    <span class="handle-inner"></span>
+                  </div>
+
+                  <!-- 4 Edge Midpoint Handles -->
+                  <div
+                    class="quad-handle edge t"
+                    [style.left.%]="edgeMidpoints.t.x"
+                    [style.top.%]="edgeMidpoints.t.y"
+                    (pointerdown)="startCropDrag('t', $event)"
+                    title="Drag Top Edge"
+                  ></div>
+
+                  <div
+                    class="quad-handle edge r"
+                    [style.left.%]="edgeMidpoints.r.x"
+                    [style.top.%]="edgeMidpoints.r.y"
+                    (pointerdown)="startCropDrag('r', $event)"
+                    title="Drag Right Edge"
+                  ></div>
+
+                  <div
+                    class="quad-handle edge b"
+                    [style.left.%]="edgeMidpoints.b.x"
+                    [style.top.%]="edgeMidpoints.b.y"
+                    (pointerdown)="startCropDrag('b', $event)"
+                    title="Drag Bottom Edge"
+                  ></div>
+
+                  <div
+                    class="quad-handle edge l"
+                    [style.left.%]="edgeMidpoints.l.x"
+                    [style.top.%]="edgeMidpoints.l.y"
+                    (pointerdown)="startCropDrag('l', $event)"
+                    title="Drag Left Edge"
+                  ></div>
+
+                  <!-- Magnifier Loupe on Active Drag -->
+                  @if (showLoupe && activeCropHandle) {
+                    <div
+                      class="crop-loupe"
+                      [style.left.%]="loupePos.x"
+                      [style.top.%]="loupePos.y"
+                    >
+                      <div
+                        class="loupe-img-box"
+                        [style.backgroundImage]="loupeBgUrl"
+                        [style.backgroundPosition]="loupeBgPos"
+                        [style.backgroundSize]="loupeBgSize"
+                      >
+                        <div class="loupe-reticle"></div>
+                      </div>
+                    </div>
+                  }
+                </div>
+
+                <!-- Floating Perspective Crop Action Bar -->
+                <div class="crop-action-bar">
+                  <button
+                    type="button"
+                    class="crop-btn secondary"
+                    (click)="autoDetectCrop()"
+                    title="Auto Detect Document Corners"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M12 2v4m0 12v4M2 12h4m12 0h4" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                    <span>Auto Detect</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    class="crop-btn secondary"
+                    (click)="makeCropStraight()"
+                    title="Make Horizontal & Vertical Lines Level"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="3" y1="12" x2="21" y2="12" stroke-width="2.5" />
+                      <line x1="12" y1="5" x2="12" y2="19" stroke-width="1.5" stroke-dasharray="2 2" />
+                    </svg>
+                    <span>Make Straight</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    class="crop-btn secondary"
+                    (click)="rotateInCrop(90)"
+                    title="Rotate 90° Clockwise"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                    </svg>
+                    <span>Rotate</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    class="crop-btn primary"
+                    (click)="applyCrop()"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    <span>Apply Crop</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    class="crop-btn outline"
+                    (click)="resetCrop()"
+                  >
+                    Reset
+                  </button>
+
+                  <button
+                    type="button"
+                    class="crop-btn text"
+                    (click)="isCropMode = false"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              } @else {
+                <!-- Standard Clean Document Paper View -->
+                <div class="paper-sheet" [class.landscape]="pageOrientation === 'landscape'">
+                  <img
+                    [src]="activePage.displayDataUrl"
+                    alt="Scanned Document"
+                    class="paper-image"
+                  />
+                </div>
+              }
+            </div>
+          } @else {
+            <!-- Clean Document Sheet Placeholder (Matching Screenshot 1) -->
+            <div class="empty-document-stage" (click)="triggerUpload()">
+              <div class="mockup-paper-sheet-mobile">
+                <div class="doc-mockup-header-bar-mobile"></div>
+                <div class="doc-mockup-line-mobile line-1"></div>
+                <div class="doc-mockup-line-mobile line-2"></div>
+                <div class="doc-mockup-line-mobile line-3"></div>
+                <div class="doc-mockup-line-mobile line-4"></div>
+                <div class="doc-mockup-line-mobile line-5"></div>
+              </div>
+              <h3 class="mobile-empty-title">No scanned pages</h3>
+              <p class="mobile-empty-subtitle">Scan a document with your camera to start</p>
+            </div>
+          }
+
+          @if (isProcessing) {
+            <div class="stage-processing-overlay">
+              <div class="processing-spinner"></div>
+              <span class="processing-label">{{ processingMessage }}</span>
+            </div>
+          }
+        </div>
+
+        <!-- Mobile Empty Action Buttons (Screenshot 1) -->
+        @if (pages.length === 0) {
+          <div class="mobile-empty-actions">
+            <button
+              type="button"
+              class="btn-mobile-scan-camera"
+              (click)="triggerMobileScan()"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                <circle cx="12" cy="13" r="4"></circle>
+              </svg>
+              <span>Scan with camera</span>
+            </button>
+
+            <button
+              type="button"
+              class="btn-mobile-upload"
+              (click)="triggerUpload()"
+            >
+              <span>Upload file</span>
+            </button>
+          </div>
+        }
+
+        <!-- Mobile Thumbnail Page Strip (Screenshot 2) -->
+        @if (pages.length > 0) {
+          <div class="mobile-pages-strip">
+            <button
+              type="button"
+              class="mobile-strip-add-btn"
+              (click)="triggerMobileScan()"
+              title="Scan new page"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              <span>Scan</span>
+            </button>
+
+            @for (page of pages; track page.id; let idx = $index) {
+              <div
+                class="mobile-strip-thumb"
+                [class.active]="idx === activePageIndex"
+                (click)="selectPage(idx)"
+              >
+                <div class="strip-thumb-check">✓</div>
+                <img [src]="page.displayDataUrl" [alt]="'Page ' + (idx + 1)" />
+              </div>
+            }
+          </div>
+        }
+
+        <!-- Mobile Bottom Floating Toolbar (Screenshots 1 & 2) -->
+        <nav class="mobile-bottom-toolbar">
+          <button
+            type="button"
+            class="mobile-tool-btn"
+            [class.active]="isCropMode"
+            (click)="toggleCropMode()"
+            title="Crop"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"/>
+              <path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"/>
+            </svg>
+            <span>Crop</span>
+          </button>
+
+          <button
+            type="button"
+            class="mobile-tool-btn"
+            [class.active]="showRotateOptions"
+            (click)="quickRotateMobile()"
+            title="Rotate"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+            </svg>
+            <span>Rotate</span>
+          </button>
+
+          <button
+            type="button"
+            class="mobile-tool-btn"
+            [class.active]="activePage?.filter === 'bw'"
+            (click)="toggleFilterBw()"
+            title="B&W Filter"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="9"/>
+              <path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>
+            </svg>
+            <span>B&W</span>
+          </button>
+
+          <button
+            type="button"
+            class="mobile-tool-btn"
+            (click)="openOcrModal()"
+            title="Text Recognition"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M7 4H4v3M17 4h3v3M7 20H4v-3M17 20h3v-3M9 9h6M12 9v7"/>
+            </svg>
+            <span>Text</span>
+          </button>
+
+          <button
+            type="button"
+            class="mobile-tool-btn"
+            (click)="openSignModal()"
+            title="Signature"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+              <path d="M15 5l4 4"/>
+            </svg>
+            <span>Sign</span>
+          </button>
+        </nav>
+      </main>
+
+      <!-- CARD 3 (RIGHT): White "Edit" Tool Panel with Icons (Desktop) -->
+      <aside class="cs-panel-edit desktop-only">
+        <h3 class="edit-panel-title">Edit</h3>
+
+        <div class="edit-actions-list">
+          <button
+            type="button"
+            class="edit-action-btn"
+            [class.active]="isCropMode"
+            (click)="toggleCropMode()"
+            title="Adjust 4 Corners Perspective Crop"
+          >
+            <svg class="edit-btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"/>
+              <path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"/>
+            </svg>
+            <span>Crop</span>
+          </button>
+
+          <button
+            type="button"
+            class="edit-action-btn"
+            [class.active]="showRotateOptions"
+            (click)="toggleRotateOptions()"
+            title="Rotate & Straighten Options"
+          >
+            <svg class="edit-btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+            </svg>
+            <span>Rotate</span>
+            <svg class="action-chevron" [class.open]="showRotateOptions" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+
+          <!-- Rotate Options Submenu -->
+          @if (showRotateOptions) {
+            <div class="rotate-options-panel">
+              <div class="rotate-grid-actions">
+                <button
+                  type="button"
+                  class="rotate-opt-btn"
+                  (click)="rotateRight()"
+                  title="Rotate 90° Clockwise"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                  </svg>
+                  <span>90° Right</span>
+                </button>
+
+                <button
+                  type="button"
+                  class="rotate-opt-btn"
+                  (click)="rotateLeft()"
+                  title="Rotate 90° Counter-Clockwise"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2.5 2v6h6M2.66 15.57a10 10 0 1 0 .57-8.38l-5.67-5.67"/>
+                  </svg>
+                  <span>90° Left</span>
+                </button>
+
+                <button
+                  type="button"
+                  class="rotate-opt-btn"
+                  (click)="rotate180()"
+                  title="Rotate 180° Upside Down"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 9l-4-4-4 4"/>
+                    <path d="M4 15l4 4 4-4"/>
+                    <path d="M16 5v8a4 4 0 0 1-4 4H4"/>
+                  </svg>
+                  <span>180° Flip</span>
+                </button>
+
+                <button
+                  type="button"
+                  class="rotate-opt-btn"
+                  (click)="flipHorizontal()"
+                  title="Flip Horizontal (Mirror)"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M8 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h3m8-18h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3M12 2v20"/>
+                  </svg>
+                  <span>Flip H</span>
+                </button>
+              </div>
+
+              <!-- Fine Straighten / Tilt Angle Slider -->
+              <div class="straighten-control-box">
+                <div class="straighten-header">
+                  <span class="straighten-title">Fine Angle</span>
+                  <div class="angle-badge-group">
+                    <button type="button" class="btn-micro" (click)="adjustStraightenAngle(-0.5)" title="-0.5°">−</button>
+                    <span class="straighten-badge">{{ activePage?.straightenAngle || 0 }}°</span>
+                    <button type="button" class="btn-micro" (click)="adjustStraightenAngle(0.5)" title="+0.5°">+</button>
+                  </div>
+                </div>
+
+                <div class="straighten-slider-row">
+                  <span class="slider-limit">-25°</span>
+                  <input
+                    type="range"
+                    min="-25"
+                    max="25"
+                    step="0.5"
+                    [value]="activePage?.straightenAngle || 0"
+                    (input)="onStraightenSliderChange($event)"
+                    class="straighten-slider"
+                  />
+                  <span class="slider-limit">+25°</span>
+                </div>
+
+                <div class="straighten-actions">
+                  <button type="button" class="btn-auto-deskew" (click)="autoDeskew()" title="Auto detect tilt and level lines">
+                    ✨ Auto Deskew
+                  </button>
+                  <button type="button" class="btn-reset-angle" (click)="setStraightenAngle(0)" title="Reset to 0°">
+                    Reset
+                  </button>
+                </div>
+              </div>
+            </div>
+          }
+
+          <button
+            type="button"
+            class="edit-action-btn"
+            [class.active]="activePage?.filter === 'bw'"
+            (click)="toggleFilterBw()"
+            title="Clean Black & White Filter"
+          >
+            <svg class="edit-btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9"/>
+              <path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>
+            </svg>
+            <span>Clean B&W</span>
+          </button>
+
+          <button
+            type="button"
+            class="edit-action-btn"
+            (click)="openOcrModal()"
+            title="Recognize Text with AI OCR"
+          >
+            <svg class="edit-btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M7 4H4v3M17 4h3v3M7 20H4v-3M17 20h3v-3M9 9h6M12 9v7"/>
+            </svg>
+            <span>Recognize text</span>
+          </button>
+
+          <button
+            type="button"
+            class="edit-action-btn"
+            (click)="openSignModal()"
+            title="Digitally Sign Document"
+          >
+            <svg class="edit-btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+              <path d="M15 5l4 4"/>
+            </svg>
+            <span>Sign</span>
+          </button>
+        </div>
+
+        <!-- Page Setup: Orientation & Size -->
+        <div class="page-setup-section">
+          <div class="setup-divider"></div>
+
+          <h4 class="setup-heading">Page orientation</h4>
+          <div class="orientation-toggles">
+            <button
+              type="button"
+              class="orientation-btn"
+              [class.active]="pageOrientation === 'portrait'"
+              (click)="setOrientation('portrait')"
+              title="Portrait Orientation"
+            >
+              <div class="rect-icon portrait"></div>
+              <span>Portrait</span>
+            </button>
+
+            <button
+              type="button"
+              class="orientation-btn"
+              [class.active]="pageOrientation === 'landscape'"
+              (click)="setOrientation('landscape')"
+              title="Landscape Orientation"
+            >
+              <div class="rect-icon landscape"></div>
+              <span>Landscape</span>
+            </button>
+          </div>
+
+          <h4 class="setup-heading">Page size</h4>
+          <div class="page-size-select-wrap">
+            <select
+              class="page-size-select"
+              [value]="pageSize"
+              (change)="onPageSizeChange($event)"
+            >
+              <option value="fit">Fit to Image (No Borders)</option>
+              <option value="a4">A4 (Edge-to-Edge)</option>
+              <option value="letter">US Letter (Edge-to-Edge)</option>
+            </select>
+            <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </div>
+        </div>
+      </aside>
     </div>
-
-    <!-- Upload Status / Path -->
-    @if (filePath) {
-      <p style="margin-top: 20px; color: green; word-break: break-all">
-        File ready: {{ filePath }}
-      </p>
-    }
   </div>
+
+  <!-- OCR Text Modal -->
+  @if (showOcrModal) {
+    <div class="modal-backdrop" (click)="closeOcrModal()">
+      <div class="modal-dialog ocr-dialog" (click)="$event.stopPropagation()">
+        <h3 class="modal-title">Text Recognition</h3>
+        <p class="modal-meta">Recognized text from {{ activeDocFileName }}</p>
+        <textarea class="ocr-textarea" readonly [value]="ocrExtractedText"></textarea>
+        <div class="modal-actions">
+          <button type="button" class="btn-confirm full-w" (click)="copyOcrText()">
+            Copy Text
+          </button>
+          <button type="button" class="btn-link" (click)="closeOcrModal()">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Digital Signature Modal -->
+  @if (showSignModal) {
+    <div class="modal-backdrop" (click)="closeSignModal()">
+      <div class="modal-dialog sign-dialog" (click)="$event.stopPropagation()">
+        <h3 class="modal-title">Sign Document</h3>
+        <p class="modal-meta">Add digital signature stamp to {{ activeDocFileName }}</p>
+        <div class="signature-preview-box">
+          <span class="sign-font">FieldBi Certified</span>
+          <div class="sign-stamp-badge">✓ VERIFIED</div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-confirm full-w" (click)="applySignature()">
+            Apply Signature Stamp
+          </button>
+          <button type="button" class="btn-link" (click)="closeSignModal()">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- 4. Export / Success Modal -->
+  @if (showExportModal && generatedPdfUrl) {
+    <div class="modal-backdrop">
+      <div class="modal-dialog">
+        <div class="modal-success-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ec1f28" stroke-width="2.5">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </div>
+        <h3 class="modal-title">PDF Document Ready!</h3>
+        <p class="modal-meta">
+          {{ pdfFileName }}<br />
+          <b>{{ pages.length }} Page{{ pages.length === 1 ? '' : 's' }}</b> • {{ pdfFileSize }}
+        </p>
+
+        <div class="modal-actions">
+          <button type="button" class="btn-confirm full-w" (click)="downloadPdf()">
+            Download PDF
+          </button>
+          <button type="button" class="btn-upload-original full-w" (click)="previewPdf()">
+            Preview in Browser
+          </button>
+          <button type="button" class="btn-link" (click)="closeExportModal()">
+            Keep Editing
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- 5. Scan with Phone / QR Modal -->
+  @if (showQrModal) {
+    <div class="modal-backdrop" (click)="closeQrModal()">
+      <div class="modal-dialog qr-scan-dialog" (click)="$event.stopPropagation()">
+        <!-- Top Right Close Button -->
+        <button
+          type="button"
+          class="qr-modal-close-btn"
+          (click)="closeQrModal()"
+          title="Close modal"
+          aria-label="Close modal"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+
+        <div class="qr-modal-body">
+          <!-- Left Column: QR Code + Code Badge + Status -->
+          <div class="qr-code-column">
+            <div class="qr-image-wrapper">
+              <svg class="qr-vector-code" viewBox="0 0 29 29" shape-rendering="crispEdges">
+                <rect width="29" height="29" fill="#ffffff" />
+                <!-- Position Top-Left -->
+                <rect x="2" y="2" width="7" height="7" fill="#0f172a" />
+                <rect x="3" y="3" width="5" height="5" fill="#ffffff" />
+                <rect x="4" y="4" width="3" height="3" fill="#0f172a" />
+                <!-- Position Top-Right -->
+                <rect x="20" y="2" width="7" height="7" fill="#0f172a" />
+                <rect x="21" y="3" width="5" height="5" fill="#ffffff" />
+                <rect x="22" y="4" width="3" height="3" fill="#0f172a" />
+                <!-- Position Bottom-Left -->
+                <rect x="2" y="20" width="7" height="7" fill="#0f172a" />
+                <rect x="3" y="21" width="5" height="5" fill="#ffffff" />
+                <rect x="4" y="22" width="3" height="3" fill="#0f172a" />
+                <!-- Timing Patterns -->
+                <rect x="10" y="5" width="1" height="1" fill="#0f172a" />
+                <rect x="12" y="5" width="1" height="1" fill="#0f172a" />
+                <rect x="14" y="5" width="1" height="1" fill="#0f172a" />
+                <rect x="16" y="5" width="1" height="1" fill="#0f172a" />
+                <rect x="18" y="5" width="1" height="1" fill="#0f172a" />
+                <rect x="5" y="10" width="1" height="1" fill="#0f172a" />
+                <rect x="5" y="12" width="1" height="1" fill="#0f172a" />
+                <rect x="5" y="14" width="1" height="1" fill="#0f172a" />
+                <rect x="5" y="16" width="1" height="1" fill="#0f172a" />
+                <rect x="5" y="18" width="1" height="1" fill="#0f172a" />
+                <!-- Alignment Pattern -->
+                <rect x="18" y="18" width="5" height="5" fill="#0f172a" />
+                <rect x="19" y="19" width="3" height="3" fill="#ffffff" />
+                <rect x="20" y="20" width="1" height="1" fill="#0f172a" />
+                <!-- Realistic QR Data Matrix modules -->
+                <path d="M10,2h2v2h-2z M13,2h1v1h-1z M15,3h2v2h-2z M18,2h1v2h-1z M10,7h3v1h-3z M15,7h2v2h-2z M18,7h1v1h-1z M11,9h1v3h-1z M13,9h2v1h-2z M16,9h2v1h-2z M2,10h2v1h-2z M7,10h2v2h-2z M13,11h3v1h-3z M17,11h2v2h-2z M21,9h1v2h-1z M23,10h2v1h-2z M26,10h1v2h-1z M10,13h2v2h-2z M13,13h1v1h-1z M15,14h2v1h-2z M18,13h2v2h-2z M21,13h1v2h-1z M24,12h2v2h-2z M1,14h3v1h-3z M8,14h2v2h-2z M12,15h2v2h-2z M15,16h2v1h-2z M22,15h3v1h-3z M26,15h2v2h-2z M10,17h1v2h-1z M13,18h2v1h-2z M17,17h2v2h-2z M20,17h2v1h-2z M24,17h2v2h-2z M10,20h2v2h-2z M13,21h1v2h-1z M15,20h2v1h-2z M11,23h2v1h-2z M14,23h2v2h-2z M24,20h2v2h-2z M25,23h2v2h-2z M10,25h2v2h-2z M13,26h3v1h-3z M17,25h2v2h-2z M20,25h2v1h-2z M23,25h2v2h-2z M26,26h1v1h-1z M11,27h2v1h-2z M15,27h2v1h-2z M19,27h3v1h-3z M24,27h2v1h-2z" fill="#0f172a" />
+              </svg>
+            </div>
+
+            <!-- Code Badge -->
+            <div class="peer-code-box">
+              <span class="peer-id-text">{{ peerId }}</span>
+              <button
+                type="button"
+                class="btn-copy-peer"
+                (click)="copyPeerId()"
+                title="Copy peer ID"
+              >
+                {{ copiedPeerId ? 'Copied' : 'Copy' }}
+              </button>
+            </div>
+
+            <!-- Status Indicator -->
+            <div class="peer-status-indicator">
+              <span class="status-pulse-dot" [class.connected]="isPeerConnected"></span>
+              <span class="status-text">{{ isPeerConnected ? 'Device connected' : 'Waiting for a device' }}</span>
+            </div>
+          </div>
+
+          <!-- Right Column: Instructions + Peer ID Input -->
+          <div class="qr-info-column">
+            <h3 class="qr-modal-title">Scan with phone</h3>
+
+            <ol class="qr-steps-list">
+              <li>Open the camera on your phone</li>
+              <li>Scan this QR code</li>
+              <li>Take photos of your pages</li>
+              <li>They appear here automatically</li>
+            </ol>
+
+            <div class="peer-connect-section">
+              <span class="peer-connect-label">Or connect with an ID</span>
+              <div class="peer-input-row">
+                <input
+                  type="text"
+                  class="peer-input"
+                  placeholder="Enter peer ID"
+                  [value]="inputPeerId"
+                  (input)="inputPeerId = $any($event.target).value"
+                  (keyup.enter)="connectPeer()"
+                />
+                <button
+                  type="button"
+                  class="btn-connect-peer"
+                  (click)="connectPeer()"
+                >
+                  Connect
+                </button>
+              </div>
+            </div>
+
+            <p class="qr-privacy-note">Pages go directly between your devices.</p>
+
+            <div class="qr-modal-footer-action">
+              <button
+                type="button"
+                class="btn-modal-upload-link"
+                (click)="triggerUploadFromModal()"
+              >
+                Or upload files from this computer
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Send to computer Bottom Sheet Drawer (Screenshot 3) -->
+  @if (showSendToComputerSheet) {
+    <div class="send-sheet-backdrop" (click)="closeSendToComputerSheet()">
+      <div class="send-sheet-drawer" (click)="$event.stopPropagation()">
+        <div class="sheet-drag-handle"></div>
+
+        <h3 class="sheet-title">Send to computer</h3>
+        <p class="sheet-subtitle">Pages you scan go straight to your computer.</p>
+
+        <button
+          type="button"
+          class="btn-sheet-scan-qr"
+          (click)="openQrFromSheet()"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
+            <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+            <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
+            <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+            <rect x="7" y="7" width="10" height="10" rx="1.5"></rect>
+          </svg>
+          <span>Scan QR on computer</span>
+        </button>
+
+        <div class="sheet-divider">
+          <span class="divider-line"></span>
+          <span class="divider-text">or enter the ID</span>
+          <span class="divider-line"></span>
+        </div>
+
+        <div class="sheet-input-row">
+          <input
+            type="text"
+            class="sheet-peer-input"
+            placeholder="fb-7K3-92X"
+            [value]="inputPeerId || peerId"
+            (input)="inputPeerId = $any($event.target).value"
+            (keyup.enter)="connectPeerFromSheet()"
+          />
+          <button
+            type="button"
+            class="btn-sheet-connect"
+            (click)="connectPeerFromSheet()"
+          >
+            Connect
+          </button>
+        </div>
+
+        <div class="sheet-status-row">
+          <span class="sheet-status-dot" [class.connected]="isPeerConnected"></span>
+          <span class="sheet-status-text">
+            {{ isPeerConnected ? ('Connected to ' + (connectedDeviceName || 'MacBook')) : 'Not connected' }}
+          </span>
+        </div>
+      </div>
+    </div>
+  }
 </ion-content>

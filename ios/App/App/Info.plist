@@ -2,14 +2,20 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-<key>NSCameraUsageDescription</key>
-<string>We need access to your camera to scan receipts and documents into PDFs.</string>
-  <key>CAPACITOR_DEBUG</key>
+	<key>NSCameraUsageDescription</key>
+	<string>Document Scanner needs access to your camera to capture physical receipts and documents into PDF.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Document Scanner needs access to your photo library to select receipt and document images for scanning.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Document Scanner needs permission to save scanned documents and exported images to your photo library.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>DocumentScannerApp</string>
+	<string>Doc Scanner</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
