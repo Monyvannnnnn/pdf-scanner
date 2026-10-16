@@ -5,7 +5,7 @@ workflows:
     instance_type: mac_mini_m2
     environment:
       node: latest
-      java: 17
+      java: 21
       vars:
         NG_FORCE_NODE_VERSION_CHECK: "true"
     scripts:
@@ -43,7 +43,8 @@ workflows:
     instance_type: mac_mini_m2
     working_directory: android
     environment:
-      java: 17
+      node: latest
+      java: 21
     scripts:
       - name: Set Android SDK location
         script: |
