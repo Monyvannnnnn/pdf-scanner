@@ -208,3 +208,15 @@ For quick UI or logic changes without packaging an IPA:
   * *Change*: Updated `loadDefaultSample()` in `home.page.ts` to start with clean empty pages (`this.pages = []`) rather than fetching `assets/receipt.png`.
   * *Storage Purge*: Updated `initStorageAndRestore()` to detect and purge any legacy `sample_receipt` sessions previously saved in IndexedDB, preventing the receipt from re-appearing when reloading the app or opening on physical devices.
   * *Verified*: Both desktop web and mobile app load directly into the clean, branded FieldBi empty stage ("No scanned pages - Scan a document with your camera or upload files to start") with full functionality ready for user scans.
+
+---
+
+## 15. Document Image Proportional Scaling & Containment Fix
+* **Resolved Zoomed / Overflowing Document Display**:
+  * *Problem*: In desktop / IDE preview mode, scanned documents expanded to the full width of the canvas container, causing tall portrait receipts to overflow vertically and get clipped at the top and bottom.
+  * *Root Cause*: `.paper-sheet` lacked an explicit `height: 100%`, preventing percentage `max-height` constraints on the child `<img>` from resolving against the flex container.
+  * *Fix*:
+    1. Set `.paper-sheet` to `height: 100%; max-height: 100%; max-width: 100%; width: auto;` inside `.document-container`.
+    2. Configured `.paper-image` with `height: 100%; max-height: 100%; max-width: 100%; width: auto; object-fit: contain;`.
+    3. Moved the realistic document drop shadow (`box-shadow: 0 4px 20px rgba(15, 23, 42, 0.12)`) and rounded border radius directly onto `.paper-image`, ensuring the shadow hugs the actual document paper rather than the outer flex container.
+  * *Result*: Scanned documents and receipts automatically scale to fit 100% within the visible canvas stage with clean margins on all sides, completely preventing clipping on any screen or IDE preview window size.
