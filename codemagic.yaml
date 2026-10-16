@@ -105,9 +105,38 @@ workflows:
           cd build/ios/ipa
           zip -qr App.ipa Payload
           echo "IPA packaged successfully at: $(pwd)/App.ipa"
+      - name: Build iOS project for Simulator (Quick Launch Preview)
+        script: |
+          SIM_NAME=$(xcrun simctl list devices available | grep -m 1 -E "iPhone" | sed -E 's/^[[:space:]]*([^(]+)[[:space:]]+\(.*$/\1/' | xargs)
+          if [ -z "$SIM_NAME" ]; then
+            SIM_DEST="generic/platform=iOS Simulator"
+          else
+            SIM_DEST="platform=iOS Simulator,name=$SIM_NAME"
+          fi
+          echo "Building simulator app for destination: $SIM_DEST"
+
+          xcodebuild build \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -sdk iphonesimulator \
+            -destination "$SIM_DEST" \
+            -configuration Debug \
+            -derivedDataPath "build-simulator" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+          SIM_APP=$(find build-simulator/Build/Products -name "*.app" | head -n 1)
+          if [ -n "$SIM_APP" ]; then
+            echo "Found simulator app bundle at: $SIM_APP"
+            mkdir -p /Users/builder/Library/Developer/Xcode/DerivedData/App/Build/Products/Debug-iphonesimulator
+            cp -R "$SIM_APP" /Users/builder/Library/Developer/Xcode/DerivedData/App/Build/Products/Debug-iphonesimulator/
+            echo "Simulator app successfully prepared for Codemagic Quick Launch"
+          fi
     artifacts:
+      - /Users/builder/Library/Developer/Xcode/DerivedData/**/*.app
+      - build-simulator/Build/Products/**/*.app
       - build/ios/ipa/*.ipa
-      - build/Build/Products/*/*.app
       - /tmp/xcodebuild_logs/*.log
     publishing:
       email:
