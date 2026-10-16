@@ -124,20 +124,54 @@ workflows:
     environment:
       node: latest
       xcode: latest
+      cocoapods: default
+      vars:
+        NG_FORCE_NODE_VERSION_CHECK: "true"
+        XCODE_PROJECT: "ios/App/App.xcodeproj"
+        XCODE_SCHEME: "App"
     scripts:
       - name: Install dependencies
         script: |
           npm install
-      - name: Build with Generic Destination
+      - name: Build web code
         script: |
+          npm run build
+      - name: Sync native iOS project
+        script: |
+          npx cap sync ios
+      - name: Build iOS project for Simulator
+        script: |
+          SIM_NAME=$(xcrun simctl list devices available | grep -m 1 -E "iPhone" | sed -E 's/^[[:space:]]*([^(]+)[[:space:]]+\(.*$/\1/' | xargs)
+          if [ -z "$SIM_NAME" ]; then
+            SIM_DEST="generic/platform=iOS Simulator"
+          else
+            SIM_DEST="platform=iOS Simulator,name=$SIM_NAME"
+          fi
+          echo "Building for simulator destination: $SIM_DEST"
+
           xcodebuild build \
-            -project "ios/App/App.xcodeproj" \
-            -scheme "App" \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
             -sdk iphonesimulator \
+            -destination "$SIM_DEST" \
             -configuration Debug \
+            -derivedDataPath "build" \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
+
+          APP_PATH=$(find build/Build/Products -name "*.app" | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "Error: No .app found in build directory!"
+            exit 1
+          fi
+          echo "Found simulator app bundle at: $APP_PATH"
+
+          # Populate standard Xcode DerivedData path for Codemagic Quick Launch
+          mkdir -p /Users/builder/Library/Developer/Xcode/DerivedData/App/Build/Products/Debug-iphonesimulator
+          cp -R "$APP_PATH" /Users/builder/Library/Developer/Xcode/DerivedData/App/Build/Products/Debug-iphonesimulator/
+          echo "Copied .app to /Users/builder/Library/Developer/Xcode/DerivedData/App/Build/Products/Debug-iphonesimulator/"
     artifacts:
       - /Users/builder/Library/Developer/Xcode/DerivedData/**/*.app
-      - build/Build/Products/*/*.app
+      - build/Build/Products/**/*.app
+      - /tmp/xcodebuild_logs/*.log
