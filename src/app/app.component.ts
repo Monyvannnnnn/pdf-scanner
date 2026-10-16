@@ -12,7 +12,8 @@ export class AppComponent implements OnInit {
   async ngOnInit() {
     if (Capacitor.isNativePlatform()) {
       try {
-        await StatusBar.setStyle({ style: Style.Light });
+        // Style.Dark provides dark text/icons (clock, battery, wifi) on light header backgrounds
+        await StatusBar.setStyle({ style: Style.Dark });
         await StatusBar.setBackgroundColor({ color: '#ffffff' });
       } catch (e) {
         console.warn('StatusBar setup skipped:', e);

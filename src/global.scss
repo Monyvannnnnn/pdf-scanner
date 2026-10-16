@@ -24,3 +24,34 @@
 @import '@ionic/angular/css/text-alignment.css';
 @import '@ionic/angular/css/text-transformation.css';
 @import '@ionic/angular/css/flex-utils.css';
+
+/* iOS Native App System Viewport & Touch Optimization */
+html,
+body {
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  height: -webkit-fill-available;
+  overflow: hidden;
+  position: fixed;
+  overscroll-behavior-y: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Allow text selection in inputs and textareas */
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Eliminate 300ms touch delay and gray highlight box on iOS */
+button,
+a,
+[role='button'] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}

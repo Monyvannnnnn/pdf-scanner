@@ -159,4 +159,20 @@ For quick UI or logic changes without packaging an IPA:
   * Fixed `anyComponentStyle exceeded maximum budget 50kb` by removing duplicate SCSS mixin compilation and adjusting `angular.json` budget threshold.
   * Verified production build succeeds cleanly (`npm run build`).
 
+---
+
+## 11. Universal iPhone Architecture (Home Button, Notch & Dynamic Island)
+* **Comprehensive Screen Compatibility**:
+  * Works across all iPhone generations: iPhone SE (2nd/3rd gen) & iPhone 8 (375x667pt), iPhone 12/13 Mini (375x812pt), iPhone 11/12/13/14 (390x844pt), iPhone 14/15/16 Pro (Dynamic Island 393x852pt), and iPhone Plus / Pro Max (430x932pt - 440x956pt).
+* **WKWebView Fixed Viewport & Bounce Prevention**:
+  * Configured `html, body` with `position: fixed; width: 100%; height: 100dvh; overscroll-behavior-y: none;` in `global.scss`. Eliminates rubber-band bouncing of the outer WKWebView window while preserving smooth internal momentum scrolling.
+  * Added `touch-action: manipulation; -webkit-tap-highlight-color: transparent;` to remove the 300ms iOS tap delay and tap highlights.
+* **Status Bar Visibility Fix**:
+  * Updated `StatusBar.setStyle({ style: Style.Dark })` in `app.component.ts` so time, battery, and Wi-Fi icons render dark/black against light header backgrounds on iOS.
+* **Auto-Scaling Stage & Text Overflow Handling**:
+  * Added `min-width: 0; text-overflow: ellipsis;` to document title input in the mobile header, ensuring it never collides with or wraps the `Export PDF` button on narrow 375px screens.
+  * Constrained document canvas and paper images to `max-width: 100%; max-height: 100%; object-fit: contain;` inside `min-height: 0; overflow: hidden;` so tall documents scale to fit without pushing bottom navigation or action buttons off-screen.
+  * Added `max-height: calc(100dvh - 36px); overflow-y: auto;` to `.modal-dialog` for smooth scrolling on small screens.
+
+
 
