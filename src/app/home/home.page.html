@@ -81,14 +81,24 @@
       <aside class="cs-panel-scans desktop-only">
         <h2 class="scans-app-title">Scanly</h2>
 
-        <button
-          type="button"
-          class="btn-new-scan"
-          (click)="openNewScanModal()"
-          title="Scan with phone / New scan"
-        >
-          + New scan
-        </button>
+        <div class="scans-btn-group">
+          <button
+            type="button"
+            class="btn-new-scan"
+            (click)="openNewScanModal()"
+            title="Scan with phone / New scan"
+          >
+            + Scan
+          </button>
+          <button
+            type="button"
+            class="btn-new-doc"
+            (click)="createNewDocument()"
+            title="Start a new blank document"
+          >
+            + New doc
+          </button>
+        </div>
 
         @if (pages.length > 0) {
           <div class="scans-section-heading pages-heading">Pages ({{ pages.length }})</div>
@@ -127,7 +137,50 @@
               </svg>
             </div>
             <span class="empty-hint-title">No Scanned Pages</span>
-            <span class="empty-hint-desc">Click <b>+ New scan</b> to add your document</span>
+            <span class="empty-hint-desc">Click <b>+ Scan</b> to add your document</span>
+          </div>
+        }
+
+        <!-- Recent Documents Section (IndexedDB) -->
+        @if (recentDocs.length > 0) {
+          <div class="scans-section-heading recent-heading">
+            <span>Recent Documents</span>
+            <span class="recent-count-badge">{{ recentDocs.length }}</span>
+          </div>
+
+          <div class="recent-docs-list">
+            @for (doc of recentDocs; track doc.id) {
+              <div
+                class="recent-doc-item"
+                [class.active]="doc.id === activeDocId"
+                (click)="switchOrRestoreDocument(doc.id)"
+                title="Switch to {{ doc.fileName }}"
+              >
+                <div class="recent-thumb-wrap">
+                  @if (doc.thumbnail) {
+                    <img [src]="doc.thumbnail" [alt]="doc.title" class="recent-thumb-img" />
+                  } @else {
+                    <div class="recent-thumb-placeholder">📄</div>
+                  }
+                </div>
+                <div class="recent-doc-info">
+                  <span class="recent-doc-title">{{ doc.title }}</span>
+                  <span class="recent-doc-meta">{{ doc.pagesCount }} page{{ doc.pagesCount === 1 ? '' : 's' }} • {{ doc.time }}</span>
+                </div>
+                <button
+                  type="button"
+                  class="btn-delete-recent-doc"
+                  (click)="deleteSavedDocument(doc.id, $event)"
+                  title="Delete from history"
+                  aria-label="Delete document"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
+            }
           </div>
         }
       </aside>
@@ -136,7 +189,19 @@
       <main class="cs-panel-stage">
         <div class="stage-top-bar">
           <div class="stage-doc-meta">
-            <h2 class="stage-filename">{{ activeDocFileName }}</h2>
+            <div class="stage-filename-row">
+              <input
+                type="text"
+                class="stage-filename-input"
+                [value]="activeDocFileName"
+                (change)="renameDocument($any($event.target).value)"
+                (keyup.enter)="$any($event.target).blur()"
+                title="Click to rename document"
+              />
+              @if (showSaveIndicator) {
+                <span class="save-status-pill">✓ Saved</span>
+              }
+            </div>
             <span class="stage-doc-count">
               {{ pages.length === 0 ? 'No pages yet' : (pages.length + ' page' + (pages.length === 1 ? '' : 's')) }}
             </span>
@@ -148,7 +213,7 @@
             (click)="confirmAndExport()"
             [disabled]="pages.length === 0 || isProcessing"
           >
-            Export PDF
+            Export Document
           </button>
         </div>
 
@@ -951,28 +1016,157 @@
     </div>
   }
 
-  <!-- 4. Export / Success Modal -->
+  <!-- 4. Multi-Format Export Center Modal -->
   @if (showExportModal && generatedPdfUrl) {
-    <div class="modal-backdrop">
-      <div class="modal-dialog">
+    <div class="modal-backdrop" (click)="closeExportModal()">
+      <div class="modal-dialog export-center-dialog" (click)="$event.stopPropagation()">
+        <!-- Close Button -->
+        <button
+          type="button"
+          class="export-modal-close"
+          (click)="closeExportModal()"
+          title="Close export modal"
+          aria-label="Close export modal"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+
         <div class="modal-success-icon">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ec1f28" stroke-width="2.5">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#ec1f28" stroke-width="2.5">
             <polyline points="20 6 9 17 4 12"></polyline>
           </svg>
         </div>
-        <h3 class="modal-title">PDF Document Ready!</h3>
+        <h3 class="modal-title">Export Document</h3>
         <p class="modal-meta">
-          {{ pdfFileName }}<br />
-          <b>{{ pages.length }} Page{{ pages.length === 1 ? '' : 's' }}</b> • {{ pdfFileSize }}
+          {{ activeDocFileName }} • <b>{{ pages.length }} Page{{ pages.length === 1 ? '' : 's' }}</b>
         </p>
 
-        <div class="modal-actions">
-          <button type="button" class="btn-confirm full-w" (click)="downloadPdf()">
-            Download PDF
+        <!-- Format Selector Tabs -->
+        <div class="export-format-tabs">
+          <button
+            type="button"
+            class="export-tab-btn"
+            [class.active]="exportFormat === 'pdf'"
+            (click)="exportFormat = 'pdf'"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
+            <span>PDF Document</span>
           </button>
-          <button type="button" class="btn-upload-original full-w" (click)="previewPdf()">
-            Preview in Browser
+
+          <button
+            type="button"
+            class="export-tab-btn"
+            [class.active]="exportFormat === 'images'"
+            (click)="exportFormat = 'images'"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+              <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+            <span>Images & ZIP</span>
           </button>
+        </div>
+
+        @if (exportFormat === 'pdf') {
+          <!-- PDF Export Options -->
+          <div class="pdf-export-controls">
+            <div class="quality-selector-row">
+              <span class="quality-label">PDF Quality:</span>
+              <div class="quality-pills">
+                <button
+                  type="button"
+                  class="quality-pill-btn"
+                  [class.active]="exportQuality === 'high'"
+                  (click)="setExportQuality('high')"
+                >
+                  HD (Print 300 DPI)
+                </button>
+                <button
+                  type="button"
+                  class="quality-pill-btn"
+                  [class.active]="exportQuality === 'compressed'"
+                  (click)="setExportQuality('compressed')"
+                >
+                  Compressed (Email/Chat)
+                </button>
+              </div>
+            </div>
+
+            <div class="file-size-preview">
+              Estimated file size: <b>{{ pdfFileSize }}</b>
+            </div>
+
+            <div class="modal-actions">
+              <button type="button" class="btn-confirm full-w" (click)="downloadPdf()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span>Download PDF ({{ pdfFileSize }})</span>
+              </button>
+              <button type="button" class="btn-upload-original full-w" (click)="previewPdf()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+                <span>Preview in Browser</span>
+              </button>
+            </div>
+          </div>
+        } @else {
+          <!-- Images & ZIP Export Options -->
+          <div class="images-export-controls">
+            @if (isZipExporting) {
+              <div class="zip-progress-box">
+                <div class="zip-spinner"></div>
+                <span class="zip-status-text">Packing pages into ZIP ({{ zipProgress }}%)...</span>
+              </div>
+            } @else {
+              <div class="image-export-options-grid">
+                <button
+                  type="button"
+                  class="btn-confirm full-w"
+                  (click)="downloadAllPagesAsZip()"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="21 8 21 21 3 21 3 8"></polyline>
+                    <rect x="1" y="3" width="22" height="5"></rect>
+                    <line x1="10" y1="12" x2="14" y2="12"></line>
+                  </svg>
+                  <span>Download All Pages as ZIP (.zip)</span>
+                </button>
+
+                <div class="single-page-export-row">
+                  <button
+                    type="button"
+                    class="btn-upload-original"
+                    (click)="downloadCurrentPageImage('jpeg')"
+                  >
+                    <span>Page {{ activePageIndex + 1 }} (JPG)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    class="btn-upload-original"
+                    (click)="downloadCurrentPageImage('png')"
+                  >
+                    <span>Page {{ activePageIndex + 1 }} (PNG)</span>
+                  </button>
+                </div>
+              </div>
+            }
+          </div>
+        }
+
+        <div class="modal-footer-secondary">
           <button type="button" class="btn-link" (click)="closeExportModal()">
             Keep Editing
           </button>

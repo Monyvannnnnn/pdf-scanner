@@ -9,6 +9,7 @@ import { CommonModule } from '@angular/common';
 import { IonContent } from '@ionic/angular';
 import { PDFDocument } from 'pdf-lib';
 import { createWorker } from 'tesseract.js';
+import JSZip from 'jszip';
 
 export type FilterType =
   | 'original'
@@ -45,6 +46,17 @@ export interface CamScannerPage {
   cropQuad: QuadCorners; // 4 perspective corners
   naturalWidth: number;
   naturalHeight: number;
+}
+
+export interface SavedDocumentSession {
+  id: string;
+  fileName: string;
+  pages: CamScannerPage[];
+  pageOrientation: PageOrientation;
+  pageSize: PageSizeOption;
+  activePageIndex: number;
+  updatedAt: number;
+  thumbnail: string;
 }
 
 @Component({
@@ -97,23 +109,33 @@ export class HomePage implements OnInit {
   showRotateOptions = false;
   showStraightenPanel = false;
 
-  // Export / Feedback State
+  // Export / Multi-Format Export Center State
   showExportModal = false;
   generatedPdfUrl: string | null = null;
   pdfFileName = '';
   pdfFileSize = '';
   isProcessing = false;
   processingMessage = 'Processing document...';
+  exportFormat: 'pdf' | 'images' = 'pdf';
+  exportQuality: 'high' | 'compressed' = 'high';
+  isZipExporting = false;
+  zipProgress = 0;
 
-  // Scans & Document State
-  activeDocId = '';
+  // Scans & Document State (IndexedDB Persistent Storage)
+  activeDocId = 'doc_' + Date.now();
   activeDocFileName = 'Document.pdf';
+  showSaveIndicator = false;
+  private saveTimeout: any = null;
+  private dbPromise: Promise<IDBDatabase> | null = null;
+
   recentDocs: Array<{
     id: string;
     title: string;
+    fileName: string;
     pagesCount: number;
     time: string;
-    fileName: string;
+    updatedAt: number;
+    thumbnail: string;
   }> = [];
 
   // Real OCR & Signature Modal States
@@ -217,7 +239,7 @@ export class HomePage implements OnInit {
     return { t1, t2, b1, b2, l1, l2, r1, r2 };
   }
 
-  ngOnInit() {
+  async ngOnInit() {
     // Listen to all scroll events anywhere in the viewport (including ion-content and body)
     window.addEventListener(
       'scroll',
@@ -233,6 +255,9 @@ export class HomePage implements OnInit {
       },
       true
     );
+
+    // Initialize IndexedDB storage and restore previous sessions
+    await this.initStorageAndRestore();
   }
 
   @HostListener('window:scroll', [])
@@ -327,6 +352,7 @@ export class HomePage implements OnInit {
       this.activePageIndex = this.pages.length - 1;
     }
     this.isCropMode = false;
+    this.queueAutoSave();
   }
 
   // --- Pointer Drag Listeners for Interactive 4-Corner Cropping ---
@@ -533,6 +559,7 @@ export class HomePage implements OnInit {
         );
       }
       this.isCropMode = false;
+      this.queueAutoSave();
     } finally {
       this.isProcessing = false;
     }
@@ -580,6 +607,7 @@ export class HomePage implements OnInit {
         );
       }
       this.isCropMode = false;
+      this.queueAutoSave();
     } finally {
       this.isProcessing = false;
     }
@@ -816,6 +844,7 @@ export class HomePage implements OnInit {
         this.activePage.filter,
       );
     }
+    this.queueAutoSave();
   }
 
   toggleApplyToAll() {
@@ -880,14 +909,12 @@ export class HomePage implements OnInit {
 
   closeModal() {
     if (confirm('Do you want to reset the current session?')) {
-      this.pages = [];
-      this.activeDocFileName = 'Document.pdf';
+      this.createNewDocument();
     }
   }
 
   selectRecentDoc(doc: { id: string; title: string; fileName: string; pagesCount: number }) {
-    this.activeDocId = doc.id;
-    this.activeDocFileName = doc.fileName;
+    this.switchOrRestoreDocument(doc.id);
   }
 
   toggleFilterBw() {
@@ -1086,11 +1113,13 @@ export class HomePage implements OnInit {
 
   setOrientation(orientation: PageOrientation) {
     this.pageOrientation = orientation;
+    this.queueAutoSave();
   }
 
   onPageSizeChange(event: Event) {
     const val = (event.target as HTMLSelectElement).value as PageSizeOption;
     this.pageSize = val;
+    this.queueAutoSave();
   }
 
   // --- Action Buttons in Footer & Header ---
@@ -1112,9 +1141,13 @@ export class HomePage implements OnInit {
       const pdfDoc = await PDFDocument.create();
 
       for (const page of this.pages) {
-        const imageBytes = await fetch(page.displayDataUrl).then((res) =>
-          res.arrayBuffer(),
-        );
+        let imageBytes: ArrayBuffer;
+        if (this.exportQuality === 'compressed') {
+          const compUrl = await this.compressImageDataUrl(page.displayDataUrl, 0.68);
+          imageBytes = await fetch(compUrl).then((res) => res.arrayBuffer());
+        } else {
+          imageBytes = await fetch(page.displayDataUrl).then((res) => res.arrayBuffer());
+        }
         const embeddedImage = await pdfDoc.embedJpg(imageBytes);
         const imgW = embeddedImage.width;
         const imgH = embeddedImage.height;
@@ -1195,6 +1228,305 @@ export class HomePage implements OnInit {
 
   closeExportModal() {
     this.showExportModal = false;
+  }
+
+  // =========================================================================
+  // --- IndexedDB Persistent Storage & Document Session Manager ---
+  // =========================================================================
+  private getDb(): Promise<IDBDatabase> {
+    if (this.dbPromise) return this.dbPromise;
+
+    this.dbPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open('FieldBiScannerDB', 1);
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains('documents')) {
+          db.createObjectStore('documents', { keyPath: 'id' });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+
+    return this.dbPromise;
+  }
+
+  async initStorageAndRestore() {
+    try {
+      await this.loadRecentDocumentsList();
+      if (this.recentDocs.length > 0) {
+        // Automatically restore the most recently updated document session
+        await this.switchOrRestoreDocument(this.recentDocs[0].id);
+      } else {
+        // First run: load default sample receipt
+        await this.loadDefaultSample();
+      }
+    } catch (err) {
+      console.warn('Storage initialization fallback:', err);
+      await this.loadDefaultSample();
+    }
+  }
+
+  queueAutoSave() {
+    if (this.pages.length === 0) return;
+    if (this.saveTimeout) clearTimeout(this.saveTimeout);
+    this.saveTimeout = setTimeout(() => {
+      this.saveCurrentDocument();
+    }, 450);
+  }
+
+  async saveCurrentDocument() {
+    if (this.pages.length === 0) return;
+    try {
+      const db = await this.getDb();
+      const thumbnail = this.pages[0]?.displayDataUrl || '';
+      const doc: SavedDocumentSession = {
+        id: this.activeDocId,
+        fileName: this.activeDocFileName,
+        pages: this.pages,
+        pageOrientation: this.pageOrientation,
+        pageSize: this.pageSize,
+        activePageIndex: this.activePageIndex,
+        updatedAt: Date.now(),
+        thumbnail,
+      };
+
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction('documents', 'readwrite');
+        const store = tx.objectStore('documents');
+        const req = store.put(doc);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
+
+      this.showSaveIndicator = true;
+      setTimeout(() => (this.showSaveIndicator = false), 2200);
+      await this.loadRecentDocumentsList();
+    } catch (e) {
+      console.warn('Failed to auto-save document to IndexedDB:', e);
+    }
+  }
+
+  async loadRecentDocumentsList() {
+    try {
+      const db = await this.getDb();
+      const docs: SavedDocumentSession[] = await new Promise((resolve, reject) => {
+        const tx = db.transaction('documents', 'readonly');
+        const store = tx.objectStore('documents');
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+
+      docs.sort((a, b) => b.updatedAt - a.updatedAt);
+
+      this.recentDocs = docs.map((d) => ({
+        id: d.id,
+        title: d.fileName.replace(/\.pdf$/i, ''),
+        fileName: d.fileName,
+        pagesCount: d.pages.length,
+        updatedAt: d.updatedAt,
+        time: this.formatRelativeTime(d.updatedAt),
+        thumbnail: d.thumbnail,
+      }));
+    } catch (e) {
+      console.warn('Failed to load recent documents:', e);
+    }
+  }
+
+  async switchOrRestoreDocument(docId: string) {
+    if (this.activeDocId === docId && this.pages.length > 0) return;
+    try {
+      this.isProcessing = true;
+      this.processingMessage = 'Opening document...';
+      await new Promise((r) => setTimeout(r, 16));
+
+      const db = await this.getDb();
+      const doc: SavedDocumentSession | undefined = await new Promise((resolve, reject) => {
+        const tx = db.transaction('documents', 'readonly');
+        const store = tx.objectStore('documents');
+        const req = store.get(docId);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+
+      if (doc) {
+        this.activeDocId = doc.id;
+        this.activeDocFileName = doc.fileName;
+        this.pages = doc.pages;
+        this.pageOrientation = doc.pageOrientation || 'portrait';
+        this.pageSize = doc.pageSize || 'fit';
+        this.activePageIndex = Math.min(
+          doc.activePageIndex || 0,
+          Math.max(0, doc.pages.length - 1),
+        );
+        this.isCropMode = false;
+        this.showRotateOptions = false;
+        this.showStraightenPanel = false;
+        if (this.generatedPdfUrl) {
+          URL.revokeObjectURL(this.generatedPdfUrl);
+          this.generatedPdfUrl = null;
+        }
+      }
+    } finally {
+      this.isProcessing = false;
+    }
+  }
+
+  async createNewDocument() {
+    if (this.pages.length > 0) {
+      await this.saveCurrentDocument();
+    }
+    this.activeDocId = 'doc_' + Date.now();
+    this.activeDocFileName = `Document_${this.recentDocs.length + 1}.pdf`;
+    this.pages = [];
+    this.activePageIndex = 0;
+    this.isCropMode = false;
+    this.showRotateOptions = false;
+    this.showStraightenPanel = false;
+    if (this.generatedPdfUrl) {
+      URL.revokeObjectURL(this.generatedPdfUrl);
+      this.generatedPdfUrl = null;
+    }
+  }
+
+  async deleteSavedDocument(docId: string, event?: Event) {
+    if (event) event.stopPropagation();
+    if (!confirm('Are you sure you want to delete this document from history?')) return;
+
+    try {
+      const db = await this.getDb();
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction('documents', 'readwrite');
+        const store = tx.objectStore('documents');
+        const req = store.delete(docId);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
+
+      await this.loadRecentDocumentsList();
+
+      if (this.activeDocId === docId) {
+        if (this.recentDocs.length > 0) {
+          await this.switchOrRestoreDocument(this.recentDocs[0].id);
+        } else {
+          await this.createNewDocument();
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to delete document:', e);
+    }
+  }
+
+  renameDocument(newName: string) {
+    const trimmed = (newName || '').trim();
+    if (!trimmed) return;
+    this.activeDocFileName = trimmed.endsWith('.pdf') ? trimmed : `${trimmed}.pdf`;
+    this.queueAutoSave();
+  }
+
+  private formatRelativeTime(ts: number): string {
+    const diffMs = Date.now() - ts;
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days === 1) return 'Yesterday';
+    if (days < 7) return `${days}d ago`;
+    return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+
+  // =========================================================================
+  // --- Multi-Format Export Methods (PDF Quality, Single Image & ZIP) ---
+  // =========================================================================
+  async setExportQuality(quality: 'high' | 'compressed') {
+    if (this.exportQuality === quality) return;
+    this.exportQuality = quality;
+    await this.confirmAndExport();
+  }
+
+  downloadCurrentPageImage(format: 'jpeg' | 'png' = 'jpeg') {
+    const page = this.activePage;
+    if (!page) return;
+    const ext = format === 'png' ? 'png' : 'jpg';
+    const baseName = this.activeDocFileName.replace(/\.pdf$/i, '');
+    const fileName = `${baseName}_Page_${this.activePageIndex + 1}.${ext}`;
+
+    const a = document.createElement('a');
+    a.href = page.displayDataUrl;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
+  async downloadAllPagesAsZip() {
+    if (this.pages.length === 0) return;
+    this.isZipExporting = true;
+    this.zipProgress = 0;
+
+    try {
+      const zip = new JSZip();
+      const baseName = this.activeDocFileName.replace(/\.pdf$/i, '');
+      const folder = zip.folder(baseName) || zip;
+
+      for (let i = 0; i < this.pages.length; i++) {
+        const page = this.pages[i];
+        const pageNum = String(i + 1).padStart(2, '0');
+        const res = await fetch(page.displayDataUrl);
+        const blob = await res.blob();
+        folder.file(`${baseName}_Page_${pageNum}.jpg`, blob);
+        this.zipProgress = Math.round(((i + 1) / this.pages.length) * 75);
+      }
+
+      const zipBlob = await zip.generateAsync(
+        { type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } },
+        (metadata) => {
+          this.zipProgress = 75 + Math.round(metadata.percent * 0.25);
+        }
+      );
+
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${baseName}_All_Pages.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to create ZIP export:', err);
+      alert('Could not generate ZIP archive. Please try again.');
+    } finally {
+      this.isZipExporting = false;
+      this.zipProgress = 0;
+    }
+  }
+
+  private compressImageDataUrl(dataUrl: string, quality = 0.68): Promise<string> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 1500;
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(dataUrl);
+          return;
+        }
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
   }
 
   // =========================================================================

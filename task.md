@@ -96,4 +96,19 @@ For quick UI or logic changes without packaging an IPA:
   * Uses multi-ray casting from frame corners toward the center to automatically detect document borders and corner intersections against table/desk backgrounds.
   * Automatically detects paper edges upon image upload and updates the perspective crop quad instantly when clicking the "Auto Detect" button.
 
+---
+
+## 7. Multi-Format Export Center & IndexedDB Auto-Save History
+* **Export Center (PDF, JPG, PNG & ZIP Archive)**:
+  * Integrated `jszip` to generate and download all scanned pages compressed into a single `.zip` file archive.
+  * Added instant single-page image export as high-resolution `.jpg` or `.png`.
+  * Added PDF Quality presets: **HD (Print 300 DPI)** vs **Compressed (Email/Chat)** with live file size estimation.
+* **Auto-Save & Recent Documents History (IndexedDB)**:
+  * Integrated on-device `IndexedDB` (`FieldBiScannerDB`) to automatically persist active scan sessions with debounced auto-save.
+  * Scans and page edits are never lost when refreshing the browser or restarting the mobile app.
+  * Added interactive **Recent Documents** gallery in the left sidebar showing thumbnails, titles, page counts, relative timestamps, and one-click session switching.
+  * Added inline document renaming directly from the stage top bar with animated `✓ Saved` indicator.
+  * Added **+ New doc** button to start fresh scan sessions while keeping previous ones in history.
+
+
 
