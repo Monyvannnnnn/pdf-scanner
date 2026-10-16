@@ -557,90 +557,92 @@
         }
 
         <!-- Mobile Thumbnail Page Strip (Screenshot 2) -->
+        <!-- Mobile Bottom Dock (Thumbnails + Edit Toolbar) -->
         @if (pages.length > 0) {
-          <div class="mobile-pages-strip">
-            <button
-              type="button"
-              class="mobile-strip-add-btn"
-              (click)="triggerMobileScan()"
-              title="Scan new page"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-              <span>Scan</span>
-            </button>
-
-            @for (page of pages; track page.id; let idx = $index) {
-              <div
-                class="mobile-strip-thumb"
-                [class.active]="idx === activePageIndex"
-                (click)="selectPage(idx)"
+          <div class="mobile-bottom-dock">
+            <!-- Mobile Thumbnail Page Strip -->
+            <div class="mobile-pages-strip">
+              <button
+                type="button"
+                class="mobile-strip-add-btn"
+                (click)="triggerMobileScan()"
+                title="Scan new page"
               >
-                <div class="strip-thumb-check">✓</div>
-                <img [src]="page.displayDataUrl" [alt]="'Page ' + (idx + 1)" />
-              </div>
-            }
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                <span>Scan</span>
+              </button>
+
+              @for (page of pages; track page.id; let idx = $index) {
+                <div
+                  class="mobile-strip-thumb"
+                  [class.active]="idx === activePageIndex"
+                  (click)="selectPage(idx)"
+                >
+                  <div class="strip-thumb-check">✓</div>
+                  <img [src]="page.displayDataUrl" [alt]="'Page ' + (idx + 1)" />
+                </div>
+              }
+            </div>
+
+            <!-- Mobile Bottom Floating Toolbar -->
+            <nav class="mobile-bottom-toolbar">
+              <button
+                type="button"
+                class="mobile-tool-btn"
+                [class.active]="isCropMode"
+                (click)="toggleCropMode()"
+                title="Crop"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"/>
+                  <path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"/>
+                </svg>
+                <span>Crop</span>
+              </button>
+
+              <button
+                type="button"
+                class="mobile-tool-btn"
+                [class.active]="showRotateOptions"
+                (click)="quickRotateMobile()"
+                title="Rotate"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                </svg>
+                <span>Rotate</span>
+              </button>
+
+              <button
+                type="button"
+                class="mobile-tool-btn"
+                [class.active]="activePage?.filter === 'bw'"
+                (click)="toggleFilterBw()"
+                title="B&W Filter"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="9"/>
+                  <path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>
+                </svg>
+                <span>B&W</span>
+              </button>
+
+              <button
+                type="button"
+                class="mobile-tool-btn"
+                (click)="openOcrModal()"
+                title="Text Recognition"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M7 4H4v3M17 4h3v3M7 20H4v-3M17 20h3v-3M9 9h6M12 9v7"/>
+                </svg>
+                <span>Text</span>
+              </button>
+            </nav>
           </div>
-        }
-
-        <!-- Mobile Bottom Floating Toolbar (Screenshots 1 & 2) -->
-        @if (pages.length > 0) {
-          <nav class="mobile-bottom-toolbar">
-            <button
-              type="button"
-              class="mobile-tool-btn"
-              [class.active]="isCropMode"
-              (click)="toggleCropMode()"
-              title="Crop"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"/>
-                <path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"/>
-              </svg>
-              <span>Crop</span>
-            </button>
-
-            <button
-              type="button"
-              class="mobile-tool-btn"
-              [class.active]="showRotateOptions"
-              (click)="quickRotateMobile()"
-              title="Rotate"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-              </svg>
-              <span>Rotate</span>
-            </button>
-
-            <button
-              type="button"
-              class="mobile-tool-btn"
-              [class.active]="activePage?.filter === 'bw'"
-              (click)="toggleFilterBw()"
-              title="B&W Filter"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="9"/>
-                <path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>
-              </svg>
-              <span>B&W</span>
-            </button>
-
-            <button
-              type="button"
-              class="mobile-tool-btn"
-              (click)="openOcrModal()"
-              title="Text Recognition"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M7 4H4v3M17 4h3v3M7 20H4v-3M17 20h3v-3M9 9h6M12 9v7"/>
-              </svg>
-              <span>Text</span>
-            </button>
-          </nav>
         }
       </main>
 

@@ -174,5 +174,15 @@ For quick UI or logic changes without packaging an IPA:
   * Constrained document canvas and paper images to `max-width: 100%; max-height: 100%; object-fit: contain;` inside `min-height: 0; overflow: hidden;` so tall documents scale to fit without pushing bottom navigation or action buttons off-screen.
   * Added `max-height: calc(100dvh - 36px); overflow-y: auto;` to `.modal-dialog` for smooth scrolling on small screens.
 
+---
 
-
+## 12. Bottom Dock & Thumbnail Overlap Elimination
+* **Resolved Thumbnail Strip & Floating Toolbar Overlap**:
+  * *Problem*: In previous iterations, `.mobile-bottom-toolbar` used `position: sticky; bottom: max(...)` independently from `.mobile-pages-strip`. On tall scanned documents, the sticky toolbar floated directly on top of the thumbnail strip, covering half of the `+ Scan` button and thumbnail cards.
+  * *Fix*:
+    1. Wrapped `.mobile-pages-strip` and `.mobile-bottom-toolbar` inside a unified container `<div class="mobile-bottom-dock">`.
+    2. Changed `.mobile-bottom-toolbar` from `position: sticky` to `position: relative`, docking it below the thumbnail strip in natural flex flow.
+    3. Added `margin-top: auto;` to `.mobile-bottom-dock` and set `.cs-body` to `overflow: hidden;` with `padding-bottom: 0`. This auto-scales the scanned document in the stage canvas while locking the bottom dock cleanly above the home indicator bar.
+    4. Sized thumbnail cards (`52px × 66px`) and add button (`52px × 66px`) to compact, CamScanner-style dimensions with rounded corners and high-contrast green checkmark badge (`✓`).
+* **Verified Across All iPhone Screen Sizes**:
+  * Tested on iPhone SE (375 × 667), iPhone 12/13 Mini (375 × 812), iPhone 14/15/16 (393 × 852), and iPhone Pro Max (430 × 932). Both the thumbnail strip and bottom edit toolbar remain 100% visible with zero collision.
