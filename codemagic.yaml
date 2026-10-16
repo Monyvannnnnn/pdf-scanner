@@ -36,6 +36,26 @@ workflows:
           success: true
           failure: false
 
+  android:
+    name: Android debug workflow
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    working_directory: android
+    environment:
+      java: 17
+    scripts:
+      - name: Set Android SDK location
+        script: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/local.properties"
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/android/local.properties"
+      - name: Build Android
+        script: |
+          ./gradlew assembleDebug
+    artifacts:
+      - android/app/build/outputs/apk/debug/app-debug.apk
+      - app/build/outputs/apk/debug/app-debug.apk
+
+
   ionic-capacitor-ios:
     name: Ionic Capacitor iOS
     max_build_duration: 120
