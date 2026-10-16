@@ -1673,6 +1673,16 @@
     text-align: center;
   }
 
+  &.confirm-dialog {
+    max-width: 410px;
+    position: relative;
+    border-radius: 18px;
+    padding: 28px 24px 22px;
+    text-align: center;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+    animation: confirmScaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
   &.ocr-dialog {
     max-width: 520px;
     text-align: left;
@@ -2373,6 +2383,143 @@
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+.confirm-modal-backdrop {
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(8px);
+}
+
+.confirm-modal-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+  }
+}
+
+.confirm-icon-wrap {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+
+  &.danger {
+    background: rgba(236, 31, 40, 0.1);
+    color: #ec1f28;
+  }
+}
+
+.confirm-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 8px;
+  letter-spacing: -0.2px;
+}
+
+.confirm-message {
+  font-size: 13.5px;
+  color: #64748b;
+  line-height: 1.45;
+  margin: 0 0 22px;
+  padding: 0 4px;
+}
+
+.confirm-actions-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+
+  &.single-action {
+    grid-template-columns: 1fr;
+  }
+
+  .btn-confirm-cancel {
+    height: 42px;
+    border-radius: 21px;
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    color: #475569;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+
+    &:active {
+      transform: scale(0.98);
+    }
+  }
+
+  .btn-confirm-accept {
+    height: 42px;
+    border-radius: 21px;
+    background: #ec1f28; /* FieldBi Red */
+    border: none;
+    color: #ffffff;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 3px 10px rgba(236, 31, 40, 0.25);
+    transition: all 0.15s ease;
+
+    &:hover {
+      background: #d71921;
+      transform: translateY(-1px);
+      box-shadow: 0 5px 14px rgba(236, 31, 40, 0.35);
+    }
+
+    &:active {
+      transform: translateY(0);
+    }
+
+    &.danger {
+      background: #e11d48;
+      box-shadow: 0 3px 10px rgba(225, 29, 72, 0.25);
+
+      &:hover {
+        background: #be123c;
+        box-shadow: 0 5px 14px rgba(225, 29, 72, 0.35);
+      }
+    }
+  }
+}
+
+@keyframes confirmScaleIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.92) translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 .modal-actions {

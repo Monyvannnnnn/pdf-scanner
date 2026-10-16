@@ -110,5 +110,21 @@ For quick UI or logic changes without packaging an IPA:
   * Added inline document renaming directly from the stage top bar with animated `✓ Saved` indicator.
   * Added **+ New doc** button to start fresh scan sessions while keeping previous ones in history.
 
+---
+
+## 8. Custom In-App Confirmation Modal & UI Cleanup
+* **Cleaned Up Mock Features**:
+  * Removed the non-functional mock signature modal, buttons, and styles across HTML, SCSS, and TypeScript.
+* **Replaced Native Browser `confirm()` & `alert()` Popups**:
+  * Replaced the generic, unstyled browser `localhost:8100 says: Do you want to reset the current session?` popup with a custom in-app dialog matching FieldBi design guidelines.
+  * Replaced native document deletion confirmation dialog with dedicated danger-themed modal (`Delete Document?`, trash icon, rose/danger accent button).
+  * Replaced native ZIP export failure `alert()` with the in-app dialog.
+* **Modern UI & UX Features**:
+  * Frosted glass backdrop blur (`rgba(15, 23, 42, 0.5)` with `backdrop-filter: blur(8px)`).
+  * Smooth entry micro-animation (`confirmScaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)`).
+  * FieldBi brand pill buttons (`#ec1f28`), rounded icon badge, and top-right quick dismiss `X` button.
+  * Dismissible by clicking the backdrop or tapping Cancel.
+
+
 
 

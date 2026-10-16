@@ -138,6 +138,15 @@ export class HomePage implements OnInit {
     thumbnail: string;
   }> = [];
 
+  // Custom Confirmation Dialog State
+  showConfirmDialog = false;
+  confirmDialogTitle = '';
+  confirmDialogMessage = '';
+  confirmDialogType: 'warning' | 'delete' | 'reset' = 'reset';
+  confirmDialogActionText = 'Confirm';
+  confirmDialogCancelText = 'Cancel';
+  private confirmActionCallback: (() => void) | null = null;
+
   // Real OCR & Signature Modal States
   showOcrModal = false;
   ocrExtractedText = '';
@@ -906,10 +915,49 @@ export class HomePage implements OnInit {
     this.closeModal();
   }
 
-  closeModal() {
-    if (confirm('Do you want to reset the current session?')) {
-      this.createNewDocument();
+  // --- Custom Confirmation Dialog Methods ---
+  openConfirmation(
+    title: string,
+    message: string,
+    actionText: string,
+    onConfirm: () => void,
+    type: 'warning' | 'delete' | 'reset' = 'reset',
+    cancelText = 'Cancel',
+  ) {
+    this.confirmDialogTitle = title;
+    this.confirmDialogMessage = message;
+    this.confirmDialogActionText = actionText;
+    this.confirmDialogCancelText = cancelText;
+    this.confirmDialogType = type;
+    this.confirmActionCallback = onConfirm;
+    this.showConfirmDialog = true;
+  }
+
+  onConfirmAccept() {
+    this.showConfirmDialog = false;
+    if (this.confirmActionCallback) {
+      const cb = this.confirmActionCallback;
+      this.confirmActionCallback = null;
+      cb();
     }
+  }
+
+  onConfirmCancel() {
+    this.showConfirmDialog = false;
+    this.confirmActionCallback = null;
+  }
+
+  closeModal() {
+    this.openConfirmation(
+      'Reset Current Session?',
+      'Do you want to reset the current session? Any unsaved pages will be cleared and a new blank document will start.',
+      'Reset Session',
+      () => {
+        this.createNewDocument();
+      },
+      'reset',
+      'Cancel',
+    );
   }
 
   selectRecentDoc(doc: { id: string; title: string; fileName: string; pagesCount: number }) {
@@ -1377,32 +1425,39 @@ export class HomePage implements OnInit {
     }
   }
 
-  async deleteSavedDocument(docId: string, event?: Event) {
+  deleteSavedDocument(docId: string, event?: Event) {
     if (event) event.stopPropagation();
-    if (!confirm('Are you sure you want to delete this document from history?')) return;
+    this.openConfirmation(
+      'Delete Document?',
+      'Are you sure you want to delete this document from history? This action cannot be undone.',
+      'Delete',
+      async () => {
+        try {
+          const db = await this.getDb();
+          await new Promise<void>((resolve, reject) => {
+            const tx = db.transaction('documents', 'readwrite');
+            const store = tx.objectStore('documents');
+            const req = store.delete(docId);
+            req.onsuccess = () => resolve();
+            req.onerror = () => reject(req.error);
+          });
 
-    try {
-      const db = await this.getDb();
-      await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction('documents', 'readwrite');
-        const store = tx.objectStore('documents');
-        const req = store.delete(docId);
-        req.onsuccess = () => resolve();
-        req.onerror = () => reject(req.error);
-      });
+          await this.loadRecentDocumentsList();
 
-      await this.loadRecentDocumentsList();
-
-      if (this.activeDocId === docId) {
-        if (this.recentDocs.length > 0) {
-          await this.switchOrRestoreDocument(this.recentDocs[0].id);
-        } else {
-          await this.createNewDocument();
+          if (this.activeDocId === docId) {
+            if (this.recentDocs.length > 0) {
+              await this.switchOrRestoreDocument(this.recentDocs[0].id);
+            } else {
+              await this.createNewDocument();
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to delete document:', e);
         }
-      }
-    } catch (e) {
-      console.warn('Failed to delete document:', e);
-    }
+      },
+      'delete',
+      'Cancel',
+    );
   }
 
   renameDocument(newName: string) {
@@ -1485,7 +1540,14 @@ export class HomePage implements OnInit {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Failed to create ZIP export:', err);
-      alert('Could not generate ZIP archive. Please try again.');
+      this.openConfirmation(
+        'Export Failed',
+        'Could not generate the ZIP archive. Please try again.',
+        'OK',
+        () => {},
+        'warning',
+        '',
+      );
     } finally {
       this.isZipExporting = false;
       this.zipProgress = 0;
