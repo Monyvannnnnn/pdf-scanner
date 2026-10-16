@@ -295,16 +295,9 @@ export class HomePage implements OnInit {
   }
 
   async loadDefaultSample() {
-    try {
-      const response = await fetch('assets/receipt.png');
-      if (response.ok) {
-        const blob = await response.blob();
-        const dataUrl = await this.readBlobAsDataUrl(blob);
-        await this.addPageFromDataUrl(dataUrl, true, false);
-      }
-    } catch (e) {
-      console.log('Sample receipt asset not loaded directly, ready for upload');
-    }
+    // Clean start: No default image loaded, ready for user's own scan or upload
+    this.pages = [];
+    this.activePageIndex = 0;
   }
 
   // --- Add Page from Image DataURL ---
@@ -1293,16 +1286,47 @@ export class HomePage implements OnInit {
   async initStorageAndRestore() {
     try {
       await this.loadRecentDocumentsList();
+
+      // Check if any stored documents are the legacy default sample receipt and remove them
+      const db = await this.getDb();
+      for (const item of [...this.recentDocs]) {
+        const doc: SavedDocumentSession | undefined = await new Promise((resolve) => {
+          const tx = db.transaction('documents', 'readonly');
+          const store = tx.objectStore('documents');
+          const req = store.get(item.id);
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => resolve(undefined);
+        });
+
+        if (
+          doc &&
+          doc.pages &&
+          (doc.pages.some((p) => p.id === 'sample_receipt') || doc.id === 'sample_receipt')
+        ) {
+          await new Promise<void>((resolve) => {
+            const tx = db.transaction('documents', 'readwrite');
+            const store = tx.objectStore('documents');
+            const req = store.delete(item.id);
+            req.onsuccess = () => resolve();
+            req.onerror = () => resolve();
+          });
+        }
+      }
+
+      await this.loadRecentDocumentsList();
+
       if (this.recentDocs.length > 0) {
-        // Automatically restore the most recently updated document session
+        // Automatically restore user's own saved document session
         await this.switchOrRestoreDocument(this.recentDocs[0].id);
       } else {
-        // First run: load default sample receipt
-        await this.loadDefaultSample();
+        // Clean start: empty stage ready for scanning or uploading
+        this.pages = [];
+        this.activePageIndex = 0;
       }
     } catch (err) {
       console.warn('Storage initialization fallback:', err);
-      await this.loadDefaultSample();
+      this.pages = [];
+      this.activePageIndex = 0;
     }
   }
 

@@ -200,3 +200,11 @@ For quick UI or logic changes without packaging an IPA:
     2. Overrode visibility inside `@media (max-width: 860px)` and `.ios-native-app` with `display: flex !important;` to ensure full functionality on mobile and iOS apps.
     3. Updated `.stage-canvas-area` (`min-height: 0; min-width: 0;`), `.document-container`, `.paper-sheet`, and `.paper-image` with `max-width: 100%; max-height: 100%; object-fit: contain;` so scanned documents scale proportionately without clipping.
   * *Verified*: Visual testing on desktop (1366 × 768) and mobile (393 × 852) confirmed complete resolution.
+
+---
+
+## 14. Removal of Default Sample Receipt Image
+* **Disabled Automatic Sample Receipt Load**:
+  * *Change*: Updated `loadDefaultSample()` in `home.page.ts` to start with clean empty pages (`this.pages = []`) rather than fetching `assets/receipt.png`.
+  * *Storage Purge*: Updated `initStorageAndRestore()` to detect and purge any legacy `sample_receipt` sessions previously saved in IndexedDB, preventing the receipt from re-appearing when reloading the app or opening on physical devices.
+  * *Verified*: Both desktop web and mobile app load directly into the clean, branded FieldBi empty stage ("No scanned pages - Scan a document with your camera or upload files to start") with full functionality ready for user scans.
