@@ -67,3 +67,18 @@ For quick UI or logic changes without packaging an IPA:
 1. Push your changes to GitHub.
 2. Open the build overview in Codemagic.
 3. Click the **Quick Launch** button next to the simulator `.app` artifact to test the app in an interactive cloud iPhone simulator.
+
+---
+
+## 5. Web/Desktop UI & Empty State Fix
+* **Issue**:
+  * On desktop/web browsers, the empty state document placeholder was collapsed (0x0) because its styles were restricted to mobile media queries (`max-width: 860px`).
+  * Text was squished side-by-side (`"No scanned pagesScan a document with your camera to start"`) due to default horizontal flex layout.
+  * No action buttons existed on web to upload files or start a scan.
+  * The top bar "Export PDF" button was text-clipped as `Export P...`.
+* **Fix Applied**:
+  * Configured `.empty-document-stage` with column layout, proper spacing, and centered alignment on web.
+  * Added styled document placeholder illustration for desktop screens with subtle hover elevation.
+  * Added desktop-specific action buttons ("Upload from computer" & "Scan with phone") using FieldBi signature pill styling, hidden automatically on mobile (`max-width: 860px`).
+  * Added `white-space: nowrap; flex-shrink: 0;` to `.btn-export-pdf` to prevent text truncation in the desktop header.
+

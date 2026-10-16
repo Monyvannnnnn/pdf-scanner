@@ -411,7 +411,7 @@
               }
             </div>
           } @else {
-            <!-- Clean Document Sheet Placeholder (Matching Screenshot 1) -->
+            <!-- Clean Document Sheet Placeholder -->
             <div class="empty-document-stage" (click)="triggerUpload()">
               <div class="mockup-paper-sheet-mobile">
                 <div class="doc-mockup-header-bar-mobile"></div>
@@ -421,8 +421,39 @@
                 <div class="doc-mockup-line-mobile line-4"></div>
                 <div class="doc-mockup-line-mobile line-5"></div>
               </div>
-              <h3 class="mobile-empty-title">No scanned pages</h3>
-              <p class="mobile-empty-subtitle">Scan a document with your camera to start</p>
+
+              <div class="empty-stage-text-group">
+                <h3 class="mobile-empty-title">No scanned pages</h3>
+                <p class="mobile-empty-subtitle">Scan a document with your camera or upload files to start</p>
+              </div>
+
+              <!-- Desktop-only Action Buttons -->
+              <div class="desktop-empty-actions" (click)="$event.stopPropagation()">
+                <button
+                  type="button"
+                  class="btn-desktop-upload"
+                  (click)="triggerUpload()"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                  <span>Upload from computer</span>
+                </button>
+
+                <button
+                  type="button"
+                  class="btn-desktop-scan-phone"
+                  (click)="openNewScanModal()"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+                    <line x1="12" y1="18" x2="12.01" y2="18"/>
+                  </svg>
+                  <span>Scan with phone</span>
+                </button>
+              </div>
             </div>
           }
 
