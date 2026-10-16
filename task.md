@@ -186,3 +186,17 @@ For quick UI or logic changes without packaging an IPA:
     4. Sized thumbnail cards (`52px × 66px`) and add button (`52px × 66px`) to compact, CamScanner-style dimensions with rounded corners and high-contrast green checkmark badge (`✓`).
 * **Verified Across All iPhone Screen Sizes**:
   * Tested on iPhone SE (375 × 667), iPhone 12/13 Mini (375 × 812), iPhone 14/15/16 (393 × 852), and iPhone Pro Max (430 × 932). Both the thumbnail strip and bottom edit toolbar remain 100% visible with zero collision.
+
+---
+
+## 13. Desktop Web Responsive Layout & Overlap Cleanup
+* **Resolved Desktop Web Collisions & Text Duplication**:
+  * *Problem*:
+    1. On desktop viewports (width > 860px), `.mobile-only` had no default hidden rule, causing `<span class="desktop-only">Export Document</span>` and `<span class="mobile-only">Export PDF</span>` to render side-by-side as `Export DocumentExport PDF`.
+    2. `.mobile-empty-actions` and `.mobile-bottom-dock` lacked default desktop hiding rules, leaking raw unstyled `Scan with cameraUpload file` and `+ Scan` / `✓` buttons onto the web stage.
+    3. Document image on desktop was partially clipped or overflowed because `.paper-image` was sized to `max-height: calc(100vh - 135px)` rather than respecting the stage flex container dimensions.
+  * *Fix Applied*:
+    1. Added base desktop visibility rules to hide `.mobile-only`, `.mobile-empty-actions`, `.mobile-bottom-dock`, `.mobile-pages-strip`, and `.mobile-bottom-toolbar` with `display: none !important;` by default.
+    2. Overrode visibility inside `@media (max-width: 860px)` and `.ios-native-app` with `display: flex !important;` to ensure full functionality on mobile and iOS apps.
+    3. Updated `.stage-canvas-area` (`min-height: 0; min-width: 0;`), `.document-container`, `.paper-sheet`, and `.paper-image` with `max-width: 100%; max-height: 100%; object-fit: contain;` so scanned documents scale proportionately without clipping.
+  * *Verified*: Visual testing on desktop (1366 × 768) and mobile (393 × 852) confirmed complete resolution.

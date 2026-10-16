@@ -7,6 +7,19 @@
   overflow: hidden;
 }
 
+/* Default Desktop Responsive Visibility Rules (Hidden on Desktop by default) */
+.mobile-only,
+.mobile-empty-actions,
+.mobile-bottom-dock,
+.mobile-pages-strip,
+.mobile-bottom-toolbar {
+  display: none !important;
+}
+
+.desktop-only {
+  display: inline-flex !important;
+}
+
 .cs-viewport {
   --background: #f0f2f5;
   --color: #1e293b;
@@ -709,6 +722,8 @@
   /* Inner Light Gray Canvas Container */
   .stage-canvas-area {
     flex: 1;
+    min-height: 0;
+    min-width: 0;
     background: #f1f3f6; /* Matching design stage gray */
     border-radius: 6px;
     border: 1px solid #e5e7eb;
@@ -717,7 +732,8 @@
     justify-content: center;
     position: relative;
     overflow: hidden;
-    padding: 12px;
+    padding: 16px;
+    box-sizing: border-box;
 
     .stage-processing-overlay {
       position: absolute;
@@ -760,8 +776,12 @@
   }
 
   .document-container {
+    width: 100%;
+    height: 100%;
     max-width: 100%;
     max-height: 100%;
+    min-height: 0;
+    min-width: 0;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -770,27 +790,27 @@
 
   /* Clean Document Paper Sheet with Soft Shadow */
   .paper-sheet {
+    max-width: 100%;
+    max-height: 100%;
     background: #ffffff;
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
     border-radius: 4px;
     overflow: hidden;
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(0, 0, 0, 0.05);
     transition: all 0.24s ease;
 
     &.landscape {
-      max-width: 95%;
-      .paper-image {
-        max-height: calc(100vh - 150px);
-      }
+      max-width: 100%;
+      max-height: 100%;
     }
   }
 
   .paper-image {
-    max-height: calc(100vh - 135px);
     max-width: 100%;
+    max-height: 100%;
     width: auto;
     height: auto;
     display: block;
@@ -953,7 +973,7 @@
 }
 
 .crop-image-target {
-  max-height: calc(100vh - 135px);
+  max-height: calc(100vh - 180px);
   max-width: 100%;
   display: block;
   pointer-events: none;
@@ -2608,6 +2628,22 @@
     align-items: center;
   }
 
+  .mobile-bottom-dock {
+    display: flex !important;
+  }
+
+  .mobile-pages-strip {
+    display: flex !important;
+  }
+
+  .mobile-bottom-toolbar {
+    display: flex !important;
+  }
+
+  .mobile-empty-actions {
+    display: flex !important;
+  }
+
   .cs-window {
     height: 100%;
     height: 100dvh;
@@ -3111,6 +3147,22 @@
   .mobile-only {
     display: inline-flex !important;
     align-items: center;
+  }
+
+  .mobile-bottom-dock {
+    display: flex !important;
+  }
+
+  .mobile-pages-strip {
+    display: flex !important;
+  }
+
+  .mobile-bottom-toolbar {
+    display: flex !important;
+  }
+
+  .mobile-empty-actions {
+    display: flex !important;
   }
 }
 
