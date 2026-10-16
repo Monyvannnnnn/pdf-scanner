@@ -1731,6 +1731,7 @@
   max-width: 440px;
   max-height: calc(100dvh - 36px);
   overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   text-align: center;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.2);
@@ -1763,17 +1764,19 @@
   }
 
   &.qr-scan-dialog {
-    max-width: 620px;
-    padding: 32px 30px 26px 30px;
+    width: min(92vw, 560px);
+    max-width: 560px;
+    padding: 26px 24px 22px 24px;
     text-align: left;
     border-radius: 18px;
     position: relative;
     box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
+    overflow-x: hidden;
 
     .qr-modal-close-btn {
       position: absolute;
-      top: 18px;
-      right: 18px;
+      top: 16px;
+      right: 16px;
       width: 28px;
       height: 28px;
       border-radius: 50%;
@@ -1795,12 +1798,20 @@
 
     .qr-modal-body {
       display: flex;
-      gap: 30px;
+      gap: 24px;
       align-items: flex-start;
+      width: 100%;
+      box-sizing: border-box;
+
+      @media (max-width: 520px) {
+        flex-direction: column;
+        align-items: center;
+        gap: 18px;
+      }
     }
 
     .qr-code-column {
-      width: 172px;
+      width: 154px;
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
@@ -1808,8 +1819,8 @@
     }
 
     .qr-image-wrapper {
-      width: 160px;
-      height: 160px;
+      width: 150px;
+      height: 150px;
       background: #ffffff;
       padding: 6px;
       border-radius: 12px;
@@ -1893,6 +1904,7 @@
     .qr-info-column {
       flex: 1;
       min-width: 0;
+      width: 100%;
     }
 
     .qr-modal-title {
@@ -1947,14 +1959,17 @@
       gap: 8px;
       align-items: center;
       width: 100%;
+      box-sizing: border-box;
     }
 
     .peer-input {
       flex: 1;
+      min-width: 0;
+      width: 0;
       height: 38px;
       border: 1px solid #e2e8f0;
       border-radius: 8px;
-      padding: 0 12px;
+      padding: 0 10px;
       font-size: 13px;
       color: #0f172a;
       background: #ffffff;
@@ -1970,7 +1985,7 @@
 
     .btn-connect-peer {
       height: 38px;
-      padding: 0 18px;
+      padding: 0 14px;
       background: #ec1f28;
       color: #ffffff;
       border: none;
@@ -1980,6 +1995,7 @@
       cursor: pointer;
       transition: all 0.15s ease;
       flex-shrink: 0;
+      white-space: nowrap;
 
       &:hover {
         background: #d71921;

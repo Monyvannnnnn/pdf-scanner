@@ -233,3 +233,18 @@ For quick UI or logic changes without packaging an IPA:
     * Switches dynamically to landscape sheet aspect ratio (`aspect-ratio: 1.34 / 1; height: 100%; width: auto;`).
     * Centers the portrait receipt horizontally with white letterbox margins on the left and right, with the document filename caption below it.
   * *Smooth Animation*: Applied `transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1)` for fluid transitions when switching between Portrait and Landscape orientations.
+
+---
+
+## 17. "Scan with Phone" QR Modal Sizing & Connect Button Cutoff Fix
+* **Resolved Horizontal Scrollbar & Clipped Button**:
+  * *Problem*: In the "Scan with phone" QR modal, the dialog had an ugly horizontal scrollbar and the "Connect" button next to "Enter peer ID" was cut off to just `C`.
+  * *Root Cause*: `.modal-dialog` base class constrained `width: min(92%, 440px)` while `.qr-scan-dialog` had `max-width: 620px` without overriding `width`. The two-column content (QR code column + instructions + peer input + button) required ~490px, overflowing the 440px container and triggering horizontal scrolling.
+  * *Fix*:
+    1. Added `overflow-x: hidden;` to `.modal-dialog` base class to globally prevent any modal dialog from ever spawning horizontal scrollbars.
+    2. Set `.qr-scan-dialog` to `width: min(92vw, 560px); max-width: 560px; overflow-x: hidden;` so it expands comfortably for the side-by-side layout.
+    3. Sized the QR column to `154px` and QR image to `150px × 150px` to give ample breathing room to the right column.
+    4. Sized `.qr-info-column` with `flex: 1; min-width: 0; width: 100%;` to ensure full responsiveness across viewports.
+    5. In `.peer-input-row`, configured `.peer-input` with `flex: 1; min-width: 0; width: 0;` so it flex-shrinks cleanly without pushing sibling buttons out of the viewport.
+    6. Configured `.btn-connect-peer` with `white-space: nowrap; flex-shrink: 0; padding: 0 14px;`, guaranteeing the full word "Connect" is always visible.
+    7. Added responsive breakpoint `@media (max-width: 520px)` to gracefully stack QR code and instructions vertically on narrow split-panes or mobile viewports.
