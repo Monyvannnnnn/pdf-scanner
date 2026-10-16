@@ -72,6 +72,8 @@ export class HomePage implements OnInit {
   @ViewChild('cropOverlayRef') cropOverlayRef?: ElementRef<HTMLDivElement>;
   @ViewChild('fileInputRef') fileInputRef?: ElementRef<HTMLInputElement>;
   @ViewChild('cameraInputRef') cameraInputRef?: ElementRef<HTMLInputElement>;
+  @ViewChild('paperImageRef') paperImageRef?: ElementRef<HTMLImageElement>;
+  @ViewChild('cropImageRef') cropImageRef?: ElementRef<HTMLImageElement>;
 
   // Platform Detection
   isIosApp = Capacitor.getPlatform() === 'ios' || Capacitor.isNativePlatform();
@@ -695,12 +697,10 @@ export class HomePage implements OnInit {
   async rotateInCrop(delta = 90) {
     const page = this.activePage;
     if (!page) return;
-    this.isProcessing = true;
-    this.processingMessage = 'Rotating...';
-    await new Promise((r) => setTimeout(r, 16));
 
     try {
-      const rotatedUrl = await this.rotateImage90(page.originalDataUrl, delta);
+      const domImg = this.cropImageRef?.nativeElement;
+      const rotatedUrl = await this.fastRotateImageDataUrl(page.originalDataUrl, delta, domImg);
       page.originalDataUrl = rotatedUrl;
       page.croppedDataUrl = rotatedUrl;
       page.displayDataUrl = rotatedUrl;
@@ -722,35 +722,96 @@ export class HomePage implements OnInit {
         q.tl = { x: 100 - oldBl.y, y: oldBl.x };
       }
       this.loupeBgUrl = `url(${page.originalDataUrl})`;
-    } finally {
-      this.isProcessing = false;
+    } catch (e) {
+      console.warn('Fast crop rotation failed:', e);
     }
   }
 
-  private rotateImage90(dataUrl: string, delta = 90): Promise<string> {
+  // --- High Performance Instant Rotation & Flip Helpers ---
+  private fastRotateImageDataUrl(
+    dataUrl: string,
+    delta: number,
+    preferredImg?: HTMLImageElement,
+  ): Promise<string> {
     return new Promise((resolve) => {
+      const domImg =
+        preferredImg ||
+        (this.paperImageRef?.nativeElement &&
+        dataUrl === this.activePage?.displayDataUrl
+          ? this.paperImageRef.nativeElement
+          : undefined);
+
+      if (domImg && domImg.complete && domImg.naturalWidth > 0) {
+        resolve(this.drawRotatedCanvas(domImg, delta));
+        return;
+      }
+
       const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        if (delta === 90 || delta === -90 || delta === 270) {
-          canvas.width = img.height;
-          canvas.height = img.width;
-        } else {
-          canvas.width = img.width;
-          canvas.height = img.height;
-        }
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve(dataUrl);
-          return;
-        }
-        ctx.translate(canvas.width / 2, canvas.height / 2);
-        ctx.rotate((delta * Math.PI) / 180);
-        ctx.drawImage(img, -img.width / 2, -img.height / 2);
-        resolve(canvas.toDataURL('image/jpeg', 0.95));
-      };
+      img.onload = () => resolve(this.drawRotatedCanvas(img, delta));
+      img.onerror = () => resolve(dataUrl);
       img.src = dataUrl;
     });
+  }
+
+  private drawRotatedCanvas(img: HTMLImageElement, delta: number): string {
+    const is90or270 = Math.abs(delta % 180) === 90;
+    const nw = img.naturalWidth || img.width;
+    const nh = img.naturalHeight || img.height;
+    const canvas = document.createElement('canvas');
+    canvas.width = is90or270 ? nh : nw;
+    canvas.height = is90or270 ? nw : nh;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return img.src;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate((delta * Math.PI) / 180);
+    ctx.drawImage(img, -nw / 2, -nh / 2);
+
+    return canvas.toDataURL('image/jpeg', 0.88);
+  }
+
+  private fastFlipImageDataUrl(
+    dataUrl: string,
+    preferredImg?: HTMLImageElement,
+  ): Promise<string> {
+    return new Promise((resolve) => {
+      const domImg =
+        preferredImg ||
+        (this.paperImageRef?.nativeElement &&
+        dataUrl === this.activePage?.displayDataUrl
+          ? this.paperImageRef.nativeElement
+          : undefined);
+
+      if (domImg && domImg.complete && domImg.naturalWidth > 0) {
+        resolve(this.drawFlippedCanvas(domImg));
+        return;
+      }
+
+      const img = new Image();
+      img.onload = () => resolve(this.drawFlippedCanvas(img));
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  }
+
+  private drawFlippedCanvas(img: HTMLImageElement): string {
+    const nw = img.naturalWidth || img.width;
+    const nh = img.naturalHeight || img.height;
+    const canvas = document.createElement('canvas');
+    canvas.width = nw;
+    canvas.height = nh;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return img.src;
+
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(img, 0, 0);
+
+    return canvas.toDataURL('image/jpeg', 0.88);
   }
 
   async flipHorizontal() {
@@ -758,29 +819,52 @@ export class HomePage implements OnInit {
     const targets = this.applyToAllPages ? this.pages : [this.activePage];
     for (const p of targets) {
       p.flipH = !p.flipH;
-      p.displayDataUrl = await this.renderProcessedImage(
-        p.croppedDataUrl,
-        p.rotation,
-        p.straightenAngle,
-        p.flipH,
-        p.filter,
-      );
+      const domImg = p.id === this.activePage.id ? this.paperImageRef?.nativeElement : undefined;
+      const flipped = await this.fastFlipImageDataUrl(p.displayDataUrl, domImg);
+      p.displayDataUrl = flipped;
+      if (p.croppedDataUrl && p.croppedDataUrl !== p.displayDataUrl) {
+        p.croppedDataUrl = await this.fastFlipImageDataUrl(p.croppedDataUrl);
+      } else {
+        p.croppedDataUrl = flipped;
+      }
     }
+    this.queueAutoSave();
   }
 
   private async applyRotation(delta: number) {
     if (!this.activePage) return;
     const targets = this.applyToAllPages ? this.pages : [this.activePage];
+    const isSwap = Math.abs(delta % 180) === 90;
+
     for (const p of targets) {
       p.rotation = (p.rotation + delta + 360) % 360;
-      p.displayDataUrl = await this.renderProcessedImage(
-        p.croppedDataUrl,
-        p.rotation,
-        p.straightenAngle,
-        p.flipH,
-        p.filter,
-      );
+
+      const domImg = p.id === this.activePage.id ? this.paperImageRef?.nativeElement : undefined;
+      const rotatedDisplay = await this.fastRotateImageDataUrl(p.displayDataUrl, delta, domImg);
+      p.displayDataUrl = rotatedDisplay;
+
+      if (p.croppedDataUrl && p.croppedDataUrl !== p.displayDataUrl) {
+        p.croppedDataUrl = await this.fastRotateImageDataUrl(p.croppedDataUrl, delta);
+      } else {
+        p.croppedDataUrl = rotatedDisplay;
+      }
+
+      if (isSwap) {
+        const tmp = p.naturalWidth;
+        p.naturalWidth = p.naturalHeight;
+        p.naturalHeight = tmp;
+      }
     }
+
+    // Instantly adapt pageOrientation card sheet to document's new aspect ratio
+    if (this.activePage) {
+      this.pageOrientation =
+        this.activePage.naturalWidth > this.activePage.naturalHeight
+          ? 'landscape'
+          : 'portrait';
+    }
+
+    this.queueAutoSave();
   }
 
   // --- Fine Straighten Controls ---
@@ -1886,7 +1970,7 @@ export class HomePage implements OnInit {
         ctx.restore();
 
         if (filter === 'original') {
-          resolve(canvas.toDataURL('image/jpeg', 0.95));
+          resolve(canvas.toDataURL('image/jpeg', 0.88));
           return;
         }
 
@@ -1912,7 +1996,7 @@ export class HomePage implements OnInit {
         }
 
         ctx.putImageData(imgData, 0, 0);
-        resolve(canvas.toDataURL('image/jpeg', 0.95));
+        resolve(canvas.toDataURL('image/jpeg', 0.88));
       };
       img.src = dataUrl;
     });

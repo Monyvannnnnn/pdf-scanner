@@ -225,6 +225,7 @@
                 <!-- Interactive 4-Corner Perspective Cropping Area -->
                 <div class="crop-overlay-wrapper" #cropOverlayRef>
                   <img
+                    #cropImageRef
                     [src]="activePage.originalDataUrl"
                     alt="Crop Target"
                     class="crop-image-target"
@@ -470,6 +471,7 @@
                 <div class="paper-sheet" [class.landscape]="pageOrientation === 'landscape'">
                   <div class="paper-img-frame">
                     <img
+                      #paperImageRef
                       [src]="activePage.displayDataUrl"
                       alt="Scanned Document"
                       class="paper-image"
