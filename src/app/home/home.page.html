@@ -20,7 +20,7 @@
   />
 
   <!-- MAIN STUDIO MODAL WINDOW -->
-  <div class="cs-window">
+  <div class="cs-window" [class.ios-native-app]="isIosApp">
     <!-- 1. Header Bar -->
     <header class="cs-header" [class.scrolled]="isScrolled">
       <div class="cs-header-brand">

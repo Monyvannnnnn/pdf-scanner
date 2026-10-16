@@ -10,6 +10,7 @@ import { IonContent } from '@ionic/angular';
 import { PDFDocument } from 'pdf-lib';
 import { createWorker } from 'tesseract.js';
 import JSZip from 'jszip';
+import { Capacitor } from '@capacitor/core';
 
 export type FilterType =
   | 'original'
@@ -70,6 +71,9 @@ export class HomePage implements OnInit {
   @ViewChild('cropOverlayRef') cropOverlayRef?: ElementRef<HTMLDivElement>;
   @ViewChild('fileInputRef') fileInputRef?: ElementRef<HTMLInputElement>;
   @ViewChild('cameraInputRef') cameraInputRef?: ElementRef<HTMLInputElement>;
+
+  // Platform Detection
+  isIosApp = Capacitor.getPlatform() === 'ios' || Capacitor.isNativePlatform();
 
   // Header Scroll Blur State
   isScrolled = false;

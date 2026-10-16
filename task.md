@@ -140,3 +140,19 @@ For quick UI or logic changes without packaging an IPA:
   * Added frosted glass styling (`rgba(255, 255, 255, 0.96)` with `backdrop-filter: blur(20px)`), generous tap targets, and safe clearance from the iOS home indicator bar and rounded corner curves.
   * Added responsive button text labels (`Export PDF` on mobile, `Export Document` on desktop).
   * Synced updated web assets into native iOS project (`npx cap sync ios`).
+
+---
+
+## 10. Native iOS App Platform Enforcements
+* **Native Platform vs. Responsive Breakpoints**:
+  * Added Capacitor platform detection in TypeScript (`Capacitor.getPlatform() === 'ios' || Capacitor.isNativePlatform()`).
+  * Bound `.ios-native-app` class to the main studio window.
+  * Replaced screen-width-only constraints with an SCSS mixin (`@mixin ios-mobile-app-layout`) triggered by:
+    1. Native iOS platform classes: `:host-context(.ios)`, `:host-context(.plt-ios)`, `:host-context(.plt-capacitor)`, and `.ios-native-app`.
+    2. Mobile screen queries (`@media (max-width: 860px)`).
+* **WKWebView Viewport Overflow Fix**:
+  * Replaced `height: 100vh` and `width: 100vw` with `height: 100%`, `height: 100dvh`, and `height: -webkit-fill-available`.
+  * Prevents iOS WKWebView from pushing the bottom elements 34px–44px below the physical screen.
+* **Safe-Area Inset Support**:
+  * Updated all header, body, action buttons, and toolbar offsets to consume `var(--ion-safe-area-top, env(safe-area-inset-top, 0px))` and `var(--ion-safe-area-bottom, env(safe-area-inset-bottom, 0px))`.
+
