@@ -468,11 +468,16 @@
               } @else {
                 <!-- Standard Clean Document Paper View -->
                 <div class="paper-sheet" [class.landscape]="pageOrientation === 'landscape'">
-                  <img
-                    [src]="activePage.displayDataUrl"
-                    alt="Scanned Document"
-                    class="paper-image"
-                  />
+                  <div class="paper-img-frame">
+                    <img
+                      [src]="activePage.displayDataUrl"
+                      alt="Scanned Document"
+                      class="paper-image"
+                    />
+                  </div>
+                  <div class="paper-doc-caption">
+                    {{ activePage.fileName || activeDocFileName }}
+                  </div>
                 </div>
               }
             </div>

@@ -220,3 +220,16 @@ For quick UI or logic changes without packaging an IPA:
     2. Configured `.paper-image` with `height: 100%; max-height: 100%; max-width: 100%; width: auto; object-fit: contain;`.
     3. Moved the realistic document drop shadow (`box-shadow: 0 4px 20px rgba(15, 23, 42, 0.12)`) and rounded border radius directly onto `.paper-image`, ensuring the shadow hugs the actual document paper rather than the outer flex container.
   * *Result*: Scanned documents and receipts automatically scale to fit 100% within the visible canvas stage with clean margins on all sides, completely preventing clipping on any screen or IDE preview window size.
+
+---
+
+## 16. Portrait & Landscape Paper Sheet Card Layout
+* **Implemented User-Provided Portrait and Landscape Sheet Design**:
+  * *Design Pattern*: Matches user reference screenshots showing a rounded white card paper sheet with subtle shadow, centered image frame, and bottom document filename caption.
+  * *Portrait Mode (`pageOrientation === 'portrait'`)**:
+    * Sized to standard portrait sheet aspect ratio (`aspect-ratio: 1 / 1.34; height: 100%; width: auto;`).
+    * The image fits centered inside `.paper-img-frame` with slim margins, and the document filename caption (`{{ activePage?.fileName || activeDocFileName }}`) renders cleanly at the bottom.
+  * *Landscape Mode (`pageOrientation === 'landscape'`)**:
+    * Switches dynamically to landscape sheet aspect ratio (`aspect-ratio: 1.34 / 1; height: 100%; width: auto;`).
+    * Centers the portrait receipt horizontally with white letterbox margins on the left and right, with the document filename caption below it.
+  * *Smooth Animation*: Applied `transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1)` for fluid transitions when switching between Portrait and Landscape orientations.

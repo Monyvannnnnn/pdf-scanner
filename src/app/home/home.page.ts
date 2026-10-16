@@ -40,6 +40,7 @@ export interface CamScannerPage {
   originalDataUrl: string;
   croppedDataUrl: string;
   displayDataUrl: string;
+  fileName?: string;
   filter: FilterType;
   rotation: number; // 0, 90, 180, 270
   straightenAngle: number; // fine rotation -25..+25 deg
@@ -305,6 +306,7 @@ export class HomePage implements OnInit {
     dataUrl: string,
     isSample = false,
     replace = false,
+    fileName?: string,
   ) {
     const { width, height } = await this.getImageDimensions(dataUrl);
 
@@ -334,6 +336,7 @@ export class HomePage implements OnInit {
 
     const newPage: CamScannerPage = {
       id: pageId,
+      fileName,
       originalDataUrl: dataUrl,
       croppedDataUrl: croppedUrl,
       displayDataUrl: displayUrl,
@@ -885,7 +888,7 @@ export class HomePage implements OnInit {
             this.activeDocFileName = `${baseName}.pdf`;
           }
           const optimizedDataUrl = await this.optimizeUploadedImage(file);
-          await this.addPageFromDataUrl(optimizedDataUrl, false, false);
+          await this.addPageFromDataUrl(optimizedDataUrl, false, false, file.name);
         }
       }
     } catch (err) {
