@@ -809,17 +809,122 @@
   @if (showOcrModal) {
     <div class="modal-backdrop" (click)="closeOcrModal()">
       <div class="modal-dialog ocr-dialog" (click)="$event.stopPropagation()">
-        <h3 class="modal-title">Text Recognition</h3>
-        <p class="modal-meta">Recognized text from {{ activeDocFileName }}</p>
-        <textarea class="ocr-textarea" readonly [value]="ocrExtractedText"></textarea>
-        <div class="modal-actions">
-          <button type="button" class="btn-confirm full-w" (click)="copyOcrText()">
-            Copy Text
-          </button>
-          <button type="button" class="btn-link" (click)="closeOcrModal()">
-            Close
-          </button>
+        <!-- Close Button -->
+        <button
+          type="button"
+          class="ocr-modal-close"
+          (click)="closeOcrModal()"
+          title="Close OCR"
+          aria-label="Close OCR"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+
+        <div class="ocr-modal-header">
+          <div class="ocr-badge-row">
+            <span class="ocr-engine-pill">AI Vision OCR</span>
+            <span class="ocr-page-pill">Page {{ activePageIndex + 1 }} of {{ pages.length }}</span>
+          </div>
+          <h3 class="modal-title">Optical Character Recognition</h3>
+          <p class="modal-meta">Extract text, numbers, and receipt data from {{ activeDocFileName }}</p>
         </div>
+
+        @if (isOcrRunning) {
+          <!-- OCR Progress Visualizer -->
+          <div class="ocr-progress-box">
+            <div class="ocr-scan-animation">
+              <div class="ocr-scan-beam"></div>
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#ec1f28" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 4H4v3M17 4h3v3M7 20H4v-3M17 20h3v-3M9 9h6M12 9v7"/>
+              </svg>
+            </div>
+            <div class="ocr-status-title">{{ ocrStatusText }}</div>
+            <div class="ocr-progress-track">
+              <div class="ocr-progress-fill" [style.width.%]="ocrProgress"></div>
+            </div>
+            <span class="ocr-progress-percent">{{ ocrProgress }}%</span>
+          </div>
+        } @else if (ocrError) {
+          <div class="ocr-error-box">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <p class="ocr-error-text">{{ ocrError }}</p>
+            <button type="button" class="btn-confirm" (click)="runOcr()">
+              Retry OCR
+            </button>
+          </div>
+        } @else {
+          <!-- OCR Result View -->
+          <div class="ocr-meta-bar">
+            <div class="ocr-stats">
+              <span class="stat-pill">{{ ocrWordCount }} words</span>
+              <span class="stat-pill">{{ ocrCharCount }} chars</span>
+            </div>
+            <button
+              type="button"
+              class="btn-rescan-inline"
+              (click)="runOcr()"
+              title="Re-run OCR on current page"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+              </svg>
+              <span>Re-scan</span>
+            </button>
+          </div>
+
+          <textarea
+            class="ocr-textarea"
+            [value]="ocrExtractedText"
+            (input)="onOcrTextInput($event)"
+            placeholder="Extracted text will appear here..."
+          ></textarea>
+
+          <div class="ocr-tip-box">
+            💡 <span>Tip: Text recognition is automatically enhanced when using the <b>Clean B&W</b> or <b>Magic Pro</b> filter.</span>
+          </div>
+
+          <div class="modal-actions ocr-actions-grid">
+            <button
+              type="button"
+              class="btn-confirm"
+              [class.copied]="ocrCopied"
+              (click)="copyOcrText()"
+            >
+              @if (ocrCopied) {
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                <span>Copied!</span>
+              } @else {
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                <span>Copy Text</span>
+              }
+            </button>
+
+            <button
+              type="button"
+              class="btn-upload-original"
+              (click)="exportOcrTxt()"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              <span>Export .TXT</span>
+            </button>
+          </div>
+        }
       </div>
     </div>
   }

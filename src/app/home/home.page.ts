@@ -8,6 +8,7 @@ import {
 import { CommonModule } from '@angular/common';
 import { IonContent } from '@ionic/angular';
 import { PDFDocument } from 'pdf-lib';
+import { createWorker } from 'tesseract.js';
 
 export type FilterType =
   | 'original'
@@ -115,9 +116,17 @@ export class HomePage implements OnInit {
     fileName: string;
   }> = [];
 
-  // OCR & Signature Modal States
+  // Real OCR & Signature Modal States
   showOcrModal = false;
   ocrExtractedText = '';
+  isOcrRunning = false;
+  ocrProgress = 0;
+  ocrStatusText = 'Initializing OCR engine...';
+  ocrCopied = false;
+  ocrWordCount = 0;
+  ocrCharCount = 0;
+  ocrError: string | null = null;
+  ocrLastProcessedPageId = '';
   showSignModal = false;
 
   // Scan with Phone QR Modal State
@@ -270,7 +279,7 @@ export class HomePage implements OnInit {
     const { width, height } = await this.getImageDimensions(dataUrl);
 
     // Initial 4-corner perspective quad
-    // For uploaded image: full uncropped default bounds (0..100)
+    // Auto-detect corners with computer vision for uploaded images; use preset for sample receipt
     const quad: QuadCorners = isSample
       ? {
           tl: { x: 4.1, y: 2.8 },
@@ -278,12 +287,7 @@ export class HomePage implements OnInit {
           br: { x: 96.8, y: 96.5 },
           bl: { x: 6.8, y: 97.8 },
         }
-      : {
-          tl: { x: 0, y: 0 },
-          tr: { x: 100, y: 0 },
-          br: { x: 100, y: 100 },
-          bl: { x: 0, y: 100 },
-        };
+      : await this.detectDocumentCorners(dataUrl);
 
     const pageId = isSample
       ? 'sample_receipt'
@@ -581,23 +585,36 @@ export class HomePage implements OnInit {
     }
   }
 
-  autoDetectCrop() {
+  // --- Smart Computer Vision Edge Detection ---
+  async autoDetectCrop() {
     const page = this.activePage;
     if (!page) return;
-    if (page.id === 'sample_receipt') {
-      page.cropQuad = {
-        tl: { x: 4.1, y: 2.8 },
-        tr: { x: 97.0, y: 1.2 },
-        br: { x: 96.8, y: 96.5 },
-        bl: { x: 6.8, y: 97.8 },
-      };
-    } else {
+    this.isProcessing = true;
+    this.processingMessage = 'Detecting document borders...';
+    await new Promise((r) => setTimeout(r, 16));
+
+    try {
+      if (page.id === 'sample_receipt') {
+        page.cropQuad = {
+          tl: { x: 4.1, y: 2.8 },
+          tr: { x: 97.0, y: 1.2 },
+          br: { x: 96.8, y: 96.5 },
+          bl: { x: 6.8, y: 97.8 },
+        };
+      } else {
+        const detected = await this.detectDocumentCorners(page.originalDataUrl);
+        page.cropQuad = detected;
+      }
+    } catch (err) {
+      console.warn('Auto edge detection fallback:', err);
       page.cropQuad = {
         tl: { x: 3, y: 3 },
         tr: { x: 97, y: 3 },
         br: { x: 97, y: 97 },
         bl: { x: 3, y: 97 },
       };
+    } finally {
+      this.isProcessing = false;
     }
   }
 
@@ -879,35 +896,113 @@ export class HomePage implements OnInit {
     this.setFilter(nextFilter);
   }
 
-  openOcrModal() {
-    this.ocrExtractedText = `DOCUMENT TEXT RECOGNITION (OCR)
-----------------------------------------
-Document: ${this.activeDocFileName}
-Scanned: ${new Date().toLocaleDateString()}
-Status: Verified by FieldBi AI Engine
-
-[Extracted Content]
-1. LEASE AGREEMENT & RECEIPT
-2. FieldBi Retail Services Co., Ltd.
-3. Reference: INV-2024-883921
-4. Gross Amount: $1,450.00
-5. Tax / VAT: $145.00
-6. Net Total: $1,595.00
-7. Payment Status: PAID IN FULL
-----------------------------------------
-Authorized Signature: Verified & Intact.`;
+  // --- Real Tesseract.js OCR Methods ---
+  async openOcrModal() {
+    if (!this.activePage) return;
     this.showOcrModal = true;
+    this.ocrCopied = false;
+    this.ocrError = null;
+
+    // Automatically trigger OCR if new page or not yet processed
+    if (this.ocrLastProcessedPageId !== this.activePage.id || !this.ocrExtractedText) {
+      await this.runOcr();
+    } else {
+      this.updateOcrCounts();
+    }
+  }
+
+  async runOcr() {
+    const page = this.activePage;
+    if (!page) return;
+
+    this.isOcrRunning = true;
+    this.ocrProgress = 0;
+    this.ocrStatusText = 'Initializing OCR engine...';
+    this.ocrError = null;
+
+    try {
+      const worker = await createWorker('eng', 1, {
+        logger: (m) => {
+          if (m.status === 'recognizing text') {
+            this.ocrProgress = Math.min(100, Math.round((m.progress || 0) * 100));
+            this.ocrStatusText = `Recognizing text (${this.ocrProgress}%)...`;
+          } else if (m.status === 'loading tesseract core') {
+            this.ocrStatusText = 'Loading OCR Core...';
+          } else if (m.status === 'loading language traineddata') {
+            this.ocrStatusText = 'Loading English Language Model...';
+          } else if (m.status === 'initializing api') {
+            this.ocrStatusText = 'Preparing recognition engine...';
+          }
+        },
+      });
+
+      // Best OCR quality: use displayDataUrl (which has active filters applied) or croppedDataUrl
+      const imageSource = page.displayDataUrl || page.croppedDataUrl || page.originalDataUrl;
+      const ret = await worker.recognize(imageSource);
+      await worker.terminate();
+
+      const recognized = (ret.data?.text || '').trim();
+      this.ocrExtractedText = recognized || 'No readable text was detected on this page. Try applying the "Clean B&W" or "Magic Pro" filter to sharpen contrast.';
+      this.ocrLastProcessedPageId = page.id;
+      this.updateOcrCounts();
+    } catch (err: any) {
+      console.error('OCR Error:', err);
+      this.ocrError = 'Unable to recognize text. Please check your internet connection for first-time model loading, or try again.';
+    } finally {
+      this.isOcrRunning = false;
+    }
   }
 
   closeOcrModal() {
     this.showOcrModal = false;
   }
 
-  copyOcrText() {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(this.ocrExtractedText);
+  onOcrTextInput(event: Event) {
+    const target = event.target as HTMLTextAreaElement;
+    this.ocrExtractedText = target.value;
+    this.updateOcrCounts();
+  }
+
+  updateOcrCounts() {
+    const text = (this.ocrExtractedText || '').trim();
+    this.ocrCharCount = text.length;
+    this.ocrWordCount = text ? text.split(/\s+/).filter(Boolean).length : 0;
+  }
+
+  async copyOcrText() {
+    if (!this.ocrExtractedText) return;
+    try {
+      await navigator.clipboard.writeText(this.ocrExtractedText);
+      this.ocrCopied = true;
+      setTimeout(() => {
+        this.ocrCopied = false;
+      }, 2500);
+    } catch (e) {
+      const el = document.createElement('textarea');
+      el.value = this.ocrExtractedText;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      this.ocrCopied = true;
+      setTimeout(() => {
+        this.ocrCopied = false;
+      }, 2500);
     }
-    alert('Extracted text copied to clipboard!');
+  }
+
+  exportOcrTxt() {
+    if (!this.ocrExtractedText) return;
+    const blob = new Blob([this.ocrExtractedText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const baseName = this.activeDocFileName.replace(/\.pdf$/i, '');
+    a.href = url;
+    a.download = `${baseName}_Page_${this.activePageIndex + 1}_Text.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   openSignModal() {
@@ -1775,6 +1870,179 @@ Authorized Signature: Verified & Intact.`;
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => resolve({ width: img.width, height: img.height });
+      img.src = dataUrl;
+    });
+  }
+
+  // --- Computer Vision Document Edge Detection Algorithm ---
+  private detectDocumentCorners(dataUrl: string): Promise<QuadCorners> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        // Downsample for instant < 20ms analysis
+        const targetW = 320;
+        const scale = targetW / img.width;
+        const w = targetW;
+        const h = Math.max(10, Math.round(img.height * scale));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve({
+            tl: { x: 3, y: 3 },
+            tr: { x: 97, y: 3 },
+            br: { x: 97, y: 97 },
+            bl: { x: 3, y: 97 },
+          });
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, w, h);
+        const imgData = ctx.getImageData(0, 0, w, h).data;
+
+        // 1. Grayscale & Luminance Map
+        const lum = new Float32Array(w * h);
+        for (let i = 0; i < w * h; i++) {
+          const idx = i << 2;
+          lum[i] = 0.299 * imgData[idx] + 0.587 * imgData[idx + 1] + 0.114 * imgData[idx + 2];
+        }
+
+        // 2. Background Reference Luminance from outer 5% border
+        let bgSum = 0;
+        let bgCount = 0;
+        const marginX = Math.max(2, Math.floor(w * 0.05));
+        const marginY = Math.max(2, Math.floor(h * 0.05));
+
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            if (x < marginX || x >= w - marginX || y < marginY || y >= h - marginY) {
+              bgSum += lum[y * w + x];
+              bgCount++;
+            }
+          }
+        }
+        const bgLum = bgCount > 0 ? bgSum / bgCount : 128;
+
+        // 3. Compute 3x3 Sobel Gradient Magnitude
+        const grad = new Float32Array(w * h);
+        let maxGrad = 1;
+        for (let y = 1; y < h - 1; y++) {
+          const row = y * w;
+          for (let x = 1; x < w - 1; x++) {
+            const gx =
+              (lum[row - w + x + 1] + 2 * lum[row + x + 1] + lum[row + w + x + 1]) -
+              (lum[row - w + x - 1] + 2 * lum[row + x - 1] + lum[row + w + x - 1]);
+            const gy =
+              (lum[row + w + x - 1] + 2 * lum[row + w + x] + lum[row + w + x + 1]) -
+              (lum[row - w + x - 1] + 2 * lum[row - w + x] + lum[row - w + x + 1]);
+            const gVal = Math.sqrt(gx * gx + gy * gy);
+            grad[row + x] = gVal;
+            if (gVal > maxGrad) maxGrad = gVal;
+          }
+        }
+
+        const edgeThresh = Math.max(22, maxGrad * 0.16);
+        const contrastDelta = Math.max(16, Math.abs(160 - bgLum) * 0.22);
+        const cx = w / 2;
+        const cy = h / 2;
+
+        // 4. Ray-cast inward from corners to find paper boundary
+        const findCorner = (startX: number, startY: number): Point2D => {
+          const rayRatios = [0.25, 0.38, 0.5, 0.62, 0.75];
+          const hits: Point2D[] = [];
+
+          for (const ratio of rayRatios) {
+            const targetX = cx + (startX === 0 ? -1 : 1) * (cx * (1 - ratio));
+            const targetY = cy + (startY === 0 ? -1 : 1) * (cy * ratio);
+
+            const dx = targetX - startX;
+            const dy = targetY - startY;
+            const dist = Math.hypot(dx, dy);
+            const steps = Math.floor(dist);
+            const stepX = dx / steps;
+            const stepY = dy / steps;
+
+            let hitX = startX;
+            let hitY = startY;
+            let found = false;
+
+            for (let s = Math.floor(steps * 0.02); s < steps * 0.85; s++) {
+              const px = Math.round(startX + s * stepX);
+              const py = Math.round(startY + s * stepY);
+              if (px < 1 || px >= w - 1 || py < 1 || py >= h - 1) continue;
+
+              const idx = py * w + px;
+              const gVal = grad[idx];
+              const lumDiff = Math.abs(lum[idx] - bgLum);
+
+              if (gVal > edgeThresh && lumDiff > contrastDelta) {
+                hitX = px;
+                hitY = py;
+                found = true;
+                break;
+              }
+            }
+
+            if (found) {
+              hits.push({
+                x: Math.round(((hitX / w) * 100) * 10) / 10,
+                y: Math.round(((hitY / h) * 100) * 10) / 10,
+              });
+            }
+          }
+
+          if (hits.length === 0) {
+            return {
+              x: startX === 0 ? 3 : 97,
+              y: startY === 0 ? 3 : 97,
+            };
+          }
+
+          hits.sort((a, b) => {
+            const da = Math.hypot(a.x - (startX === 0 ? 0 : 100), a.y - (startY === 0 ? 0 : 100));
+            const db = Math.hypot(b.x - (startX === 0 ? 0 : 100), b.y - (startY === 0 ? 0 : 100));
+            return da - db;
+          });
+
+          return hits[Math.floor(hits.length / 2)];
+        };
+
+        const tl = findCorner(0, 0);
+        const tr = findCorner(w - 1, 0);
+        const br = findCorner(w - 1, h - 1);
+        const bl = findCorner(0, h - 1);
+
+        const validX = tl.x < tr.x - 15 && bl.x < br.x - 15;
+        const validY = tl.y < bl.y - 15 && tr.y < br.y - 15;
+
+        if (validX && validY) {
+          resolve({
+            tl: { x: Math.max(1, Math.min(35, tl.x)), y: Math.max(1, Math.min(35, tl.y)) },
+            tr: { x: Math.max(65, Math.min(99, tr.x)), y: Math.max(1, Math.min(35, tr.y)) },
+            br: { x: Math.max(65, Math.min(99, br.x)), y: Math.max(65, Math.min(99, br.y)) },
+            bl: { x: Math.max(1, Math.min(35, bl.x)), y: Math.max(65, Math.min(99, bl.y)) },
+          });
+        } else {
+          resolve({
+            tl: { x: 3, y: 3 },
+            tr: { x: 97, y: 3 },
+            br: { x: 97, y: 97 },
+            bl: { x: 3, y: 97 },
+          });
+        }
+      };
+
+      img.onerror = () => {
+        resolve({
+          tl: { x: 3, y: 3 },
+          tr: { x: 97, y: 3 },
+          br: { x: 97, y: 97 },
+          bl: { x: 3, y: 97 },
+        });
+      };
+
       img.src = dataUrl;
     });
   }

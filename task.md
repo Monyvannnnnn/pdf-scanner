@@ -82,3 +82,18 @@ For quick UI or logic changes without packaging an IPA:
   * Added desktop-specific action buttons ("Upload from computer" & "Scan with phone") using FieldBi signature pill styling, hidden automatically on mobile (`max-width: 860px`).
   * Added `white-space: nowrap; flex-shrink: 0;` to `.btn-export-pdf` to prevent text truncation in the desktop header.
 
+---
+
+## 6. Smart AI OCR & Computer Vision Edge Detection
+* **Real AI Optical Character Recognition (OCR)**:
+  * Integrated `tesseract.js` for on-device/client-side text recognition without external API fees or privacy exposure.
+  * Added live progress visualizer showing initialization, language model loading, and real-time recognition percentage (0% to 100%).
+  * Added live word count, character count metadata pills, and editable textarea.
+  * Added instant "Copy Text" (with toast feedback) and "Export .TXT" plain text file download.
+  * Included a quick "Re-scan" action to re-run OCR after applying contrast filters like "Clean B&W" or "Magic Pro".
+* **Smart Auto Edge Detection**:
+  * Implemented a Computer Vision algorithm using in-memory downsampled canvas, luminance mapping, and 3x3 Sobel gradient edge analysis.
+  * Uses multi-ray casting from frame corners toward the center to automatically detect document borders and corner intersections against table/desk backgrounds.
+  * Automatically detects paper edges upon image upload and updates the perspective crop quad instantly when clicking the "Auto Detect" button.
+
+
