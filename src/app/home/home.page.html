@@ -638,19 +638,6 @@
             </svg>
             <span>Text</span>
           </button>
-
-          <button
-            type="button"
-            class="mobile-tool-btn"
-            (click)="openSignModal()"
-            title="Signature"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
-              <path d="M15 5l4 4"/>
-            </svg>
-            <span>Sign</span>
-          </button>
         </nav>
       </main>
 
@@ -805,19 +792,6 @@
               <path d="M7 4H4v3M17 4h3v3M7 20H4v-3M17 20h3v-3M9 9h6M12 9v7"/>
             </svg>
             <span>Recognize text</span>
-          </button>
-
-          <button
-            type="button"
-            class="edit-action-btn"
-            (click)="openSignModal()"
-            title="Digitally Sign Document"
-          >
-            <svg class="edit-btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
-              <path d="M15 5l4 4"/>
-            </svg>
-            <span>Sign</span>
           </button>
         </div>
 
@@ -994,27 +968,6 @@
     </div>
   }
 
-  <!-- Digital Signature Modal -->
-  @if (showSignModal) {
-    <div class="modal-backdrop" (click)="closeSignModal()">
-      <div class="modal-dialog sign-dialog" (click)="$event.stopPropagation()">
-        <h3 class="modal-title">Sign Document</h3>
-        <p class="modal-meta">Add digital signature stamp to {{ activeDocFileName }}</p>
-        <div class="signature-preview-box">
-          <span class="sign-font">FieldBi Certified</span>
-          <div class="sign-stamp-badge">✓ VERIFIED</div>
-        </div>
-        <div class="modal-actions">
-          <button type="button" class="btn-confirm full-w" (click)="applySignature()">
-            Apply Signature Stamp
-          </button>
-          <button type="button" class="btn-link" (click)="closeSignModal()">
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
-  }
 
   <!-- 4. Multi-Format Export Center Modal -->
   @if (showExportModal && generatedPdfUrl) {

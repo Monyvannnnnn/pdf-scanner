@@ -149,7 +149,6 @@ export class HomePage implements OnInit {
   ocrCharCount = 0;
   ocrError: string | null = null;
   ocrLastProcessedPageId = '';
-  showSignModal = false;
 
   // Scan with Phone QR Modal State
   showQrModal = false;
@@ -1030,18 +1029,6 @@ export class HomePage implements OnInit {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }
-
-  openSignModal() {
-    this.showSignModal = true;
-  }
-
-  closeSignModal() {
-    this.showSignModal = false;
-  }
-
-  applySignature() {
-    this.showSignModal = false;
   }
 
   // --- Scan with Phone / QR Modal Methods ---
