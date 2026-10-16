@@ -213,7 +213,8 @@
             (click)="confirmAndExport()"
             [disabled]="pages.length === 0 || isProcessing"
           >
-            Export Document
+            <span class="desktop-only">Export Document</span>
+            <span class="mobile-only">Export PDF</span>
           </button>
         </div>
 
@@ -585,60 +586,62 @@
         }
 
         <!-- Mobile Bottom Floating Toolbar (Screenshots 1 & 2) -->
-        <nav class="mobile-bottom-toolbar">
-          <button
-            type="button"
-            class="mobile-tool-btn"
-            [class.active]="isCropMode"
-            (click)="toggleCropMode()"
-            title="Crop"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"/>
-              <path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"/>
-            </svg>
-            <span>Crop</span>
-          </button>
+        @if (pages.length > 0) {
+          <nav class="mobile-bottom-toolbar">
+            <button
+              type="button"
+              class="mobile-tool-btn"
+              [class.active]="isCropMode"
+              (click)="toggleCropMode()"
+              title="Crop"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"/>
+                <path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"/>
+              </svg>
+              <span>Crop</span>
+            </button>
 
-          <button
-            type="button"
-            class="mobile-tool-btn"
-            [class.active]="showRotateOptions"
-            (click)="quickRotateMobile()"
-            title="Rotate"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-            </svg>
-            <span>Rotate</span>
-          </button>
+            <button
+              type="button"
+              class="mobile-tool-btn"
+              [class.active]="showRotateOptions"
+              (click)="quickRotateMobile()"
+              title="Rotate"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+              </svg>
+              <span>Rotate</span>
+            </button>
 
-          <button
-            type="button"
-            class="mobile-tool-btn"
-            [class.active]="activePage?.filter === 'bw'"
-            (click)="toggleFilterBw()"
-            title="B&W Filter"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="9"/>
-              <path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>
-            </svg>
-            <span>B&W</span>
-          </button>
+            <button
+              type="button"
+              class="mobile-tool-btn"
+              [class.active]="activePage?.filter === 'bw'"
+              (click)="toggleFilterBw()"
+              title="B&W Filter"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="9"/>
+                <path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>
+              </svg>
+              <span>B&W</span>
+            </button>
 
-          <button
-            type="button"
-            class="mobile-tool-btn"
-            (click)="openOcrModal()"
-            title="Text Recognition"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M7 4H4v3M17 4h3v3M7 20H4v-3M17 20h3v-3M9 9h6M12 9v7"/>
-            </svg>
-            <span>Text</span>
-          </button>
-        </nav>
+            <button
+              type="button"
+              class="mobile-tool-btn"
+              (click)="openOcrModal()"
+              title="Text Recognition"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 4H4v3M17 4h3v3M7 20H4v-3M17 20h3v-3M9 9h6M12 9v7"/>
+              </svg>
+              <span>Text</span>
+            </button>
+          </nav>
+        }
       </main>
 
       <!-- CARD 3 (RIGHT): White "Edit" Tool Panel with Icons (Desktop) -->

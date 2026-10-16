@@ -125,6 +125,18 @@ For quick UI or logic changes without packaging an IPA:
   * FieldBi brand pill buttons (`#ec1f28`), rounded icon badge, and top-right quick dismiss `X` button.
   * Dismissible by clicking the backdrop or tapping Cancel.
 
+---
 
-
-
+## 9. iOS UI Layout & Toolbar Collision Fixes
+* **Resolved Empty State Toolbar & Button Overlap**:
+  * Conditionally wrapped `.mobile-bottom-toolbar` with `@if (pages.length > 0)`.
+  * In the zero-document state, editing actions (Crop, Rotate, B&W, Text) are hidden, eliminating the collision where the floating toolbar was covering the "Upload file" button.
+* **Eliminated iOS Vertical Overflow & Safe Area Clipping**:
+  * Removed negative `margin-top: calc(-1 * ...)` on `.cs-body` that was causing unnecessary page scrolling and pushing the bottom buttons off-screen.
+  * Configured `.cs-window` with `overflow: hidden` and `.cs-body` with natural flex-1 scrolling.
+  * Scaled the document illustration (`140px x 180px`) and reduced minimum canvas height to `200px` so the entire initial screen fits on any iPhone viewport (from iPhone SE to Pro Max) without vertical scrolling.
+* **Modern iOS Floating Toolbar & Safe Area Insets**:
+  * Updated `.mobile-bottom-toolbar` to float at `bottom: max(calc(env(safe-area-inset-bottom, 0px) + 12px), 20px)`.
+  * Added frosted glass styling (`rgba(255, 255, 255, 0.96)` with `backdrop-filter: blur(20px)`), generous tap targets, and safe clearance from the iOS home indicator bar and rounded corner curves.
+  * Added responsive button text labels (`Export PDF` on mobile, `Export Document` on desktop).
+  * Synced updated web assets into native iOS project (`npx cap sync ios`).
