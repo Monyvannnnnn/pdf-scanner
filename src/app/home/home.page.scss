@@ -2595,7 +2595,7 @@
 /* ============================================================== */
 /* NATIVE IOS APP & MOBILE RESPONSIVE SYSTEM                      */
 /* ============================================================== */
-@mixin ios-mobile-app-layout {
+@media (max-width: 860px) {
   .desktop-only {
     display: none !important;
   }
@@ -3033,17 +3033,16 @@
   }
 }
 
-/* 1. Mobile screen breakpoint */
-@media (max-width: 860px) {
-  @include ios-mobile-app-layout;
-}
-
-/* 2. Native iOS App (Capacitor / WKWebView) - Always applies regardless of viewport width */
-:host-context(.ios),
-:host-context(.plt-ios),
-:host-context(.plt-capacitor),
+/* Native iOS App platform overrides */
 .ios-native-app {
-  @include ios-mobile-app-layout;
+  .desktop-only {
+    display: none !important;
+  }
+
+  .mobile-only {
+    display: inline-flex !important;
+    align-items: center;
+  }
 }
 
 /* ============================================================== */

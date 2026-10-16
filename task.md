@@ -155,4 +155,8 @@ For quick UI or logic changes without packaging an IPA:
   * Prevents iOS WKWebView from pushing the bottom elements 34px–44px below the physical screen.
 * **Safe-Area Inset Support**:
   * Updated all header, body, action buttons, and toolbar offsets to consume `var(--ion-safe-area-top, env(safe-area-inset-top, 0px))` and `var(--ion-safe-area-bottom, env(safe-area-inset-bottom, 0px))`.
+* **Codemagic Build Budget Resolution**:
+  * Fixed `anyComponentStyle exceeded maximum budget 50kb` by removing duplicate SCSS mixin compilation and adjusting `angular.json` budget threshold.
+  * Verified production build succeeds cleanly (`npm run build`).
+
 
