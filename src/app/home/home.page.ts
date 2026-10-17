@@ -14,12 +14,7 @@ import JSZip from 'jszip';
 import { Capacitor } from '@capacitor/core';
 
 export type FilterType =
-  | 'original'
-  | 'enhance'
-  | 'magic'
-  | 'lighten'
-  | 'noShadow'
-  | 'bw';
+  'original' | 'enhance' | 'magic' | 'lighten' | 'noShadow' | 'bw';
 
 export type PageOrientation = 'portrait' | 'landscape';
 export type PageSizeOption = 'a4' | 'fit' | 'letter';
@@ -272,7 +267,7 @@ export class HomePage implements OnInit, OnDestroy {
         }
         this.isScrolled = top > 2;
       },
-      true
+      true,
     );
 
     // Initialize IndexedDB storage and restore previous sessions
@@ -386,7 +381,13 @@ export class HomePage implements OnInit, OnDestroy {
 
   private processPointerMove() {
     const event = this.pendingPointerEvent;
-    if (!event || !this.isCropMode || !this.activeCropHandle || !this.activePage) return;
+    if (
+      !event ||
+      !this.isCropMode ||
+      !this.activeCropHandle ||
+      !this.activePage
+    )
+      return;
     const overlay = this.cropOverlayRef?.nativeElement;
     if (!overlay) return;
 
@@ -496,7 +497,9 @@ export class HomePage implements OnInit, OnDestroy {
       };
 
       if (handle !== 'body') {
-        this.loupeBgUrl = this.activePage ? `url(${this.activePage.originalDataUrl})` : '';
+        this.loupeBgUrl = this.activePage
+          ? `url(${this.activePage.originalDataUrl})`
+          : '';
         this.updateLoupe(this.cropDragStart.x, this.cropDragStart.y);
       }
     }
@@ -524,7 +527,7 @@ export class HomePage implements OnInit, OnDestroy {
         this.triggerUpload();
       },
       'warning',
-      'Cancel'
+      'Cancel',
     );
   }
 
@@ -727,7 +730,11 @@ export class HomePage implements OnInit, OnDestroy {
 
     try {
       const domImg = this.cropImageRef?.nativeElement;
-      const rotatedUrl = await this.fastRotateImageDataUrl(page.originalDataUrl, delta, domImg);
+      const rotatedUrl = await this.fastRotateImageDataUrl(
+        page.originalDataUrl,
+        delta,
+        domImg,
+      );
       page.originalDataUrl = rotatedUrl;
       page.croppedDataUrl = rotatedUrl;
       page.displayDataUrl = rotatedUrl;
@@ -846,7 +853,10 @@ export class HomePage implements OnInit, OnDestroy {
     const targets = this.applyToAllPages ? this.pages : [this.activePage];
     for (const p of targets) {
       p.flipH = !p.flipH;
-      const domImg = p.id === this.activePage.id ? this.paperImageRef?.nativeElement : undefined;
+      const domImg =
+        p.id === this.activePage.id
+          ? this.paperImageRef?.nativeElement
+          : undefined;
       const flipped = await this.fastFlipImageDataUrl(p.displayDataUrl, domImg);
       p.displayDataUrl = flipped;
       if (p.croppedDataUrl && p.croppedDataUrl !== p.displayDataUrl) {
@@ -866,12 +876,22 @@ export class HomePage implements OnInit, OnDestroy {
     for (const p of targets) {
       p.rotation = (p.rotation + delta + 360) % 360;
 
-      const domImg = p.id === this.activePage.id ? this.paperImageRef?.nativeElement : undefined;
-      const rotatedDisplay = await this.fastRotateImageDataUrl(p.displayDataUrl, delta, domImg);
+      const domImg =
+        p.id === this.activePage.id
+          ? this.paperImageRef?.nativeElement
+          : undefined;
+      const rotatedDisplay = await this.fastRotateImageDataUrl(
+        p.displayDataUrl,
+        delta,
+        domImg,
+      );
       p.displayDataUrl = rotatedDisplay;
 
       if (p.croppedDataUrl && p.croppedDataUrl !== p.displayDataUrl) {
-        p.croppedDataUrl = await this.fastRotateImageDataUrl(p.croppedDataUrl, delta);
+        p.croppedDataUrl = await this.fastRotateImageDataUrl(
+          p.croppedDataUrl,
+          delta,
+        );
       } else {
         p.croppedDataUrl = rotatedDisplay;
       }
@@ -994,12 +1014,20 @@ export class HomePage implements OnInit, OnDestroy {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         if (file.type.startsWith('image/')) {
-          if (i === 0 && (!this.pages.length || this.activeDocFileName === 'Document.pdf')) {
-            const baseName = file.name.replace(/\.[^/.]+$/, "");
+          if (
+            i === 0 &&
+            (!this.pages.length || this.activeDocFileName === 'Document.pdf')
+          ) {
+            const baseName = file.name.replace(/\.[^/.]+$/, '');
             this.activeDocFileName = `${baseName}.pdf`;
           }
           const optimizedDataUrl = await this.optimizeUploadedImage(file);
-          await this.addPageFromDataUrl(optimizedDataUrl, false, false, file.name);
+          await this.addPageFromDataUrl(
+            optimizedDataUrl,
+            false,
+            false,
+            file.name,
+          );
         }
       }
     } catch (err) {
@@ -1071,7 +1099,12 @@ export class HomePage implements OnInit, OnDestroy {
     );
   }
 
-  selectRecentDoc(doc: { id: string; title: string; fileName: string; pagesCount: number }) {
+  selectRecentDoc(doc: {
+    id: string;
+    title: string;
+    fileName: string;
+    pagesCount: number;
+  }) {
     this.switchOrRestoreDocument(doc.id);
   }
 
@@ -1080,7 +1113,8 @@ export class HomePage implements OnInit, OnDestroy {
       this.promptUploadFirst('Clean B&W Filter');
       return;
     }
-    const nextFilter: FilterType = this.activePage.filter === 'bw' ? 'original' : 'bw';
+    const nextFilter: FilterType =
+      this.activePage.filter === 'bw' ? 'original' : 'bw';
     this.setFilter(nextFilter);
   }
 
@@ -1095,7 +1129,10 @@ export class HomePage implements OnInit, OnDestroy {
     this.ocrError = null;
 
     // Automatically trigger OCR if new page or not yet processed
-    if (this.ocrLastProcessedPageId !== this.activePage.id || !this.ocrExtractedText) {
+    if (
+      this.ocrLastProcessedPageId !== this.activePage.id ||
+      !this.ocrExtractedText
+    ) {
       await this.runOcr();
     } else {
       this.updateOcrCounts();
@@ -1119,18 +1156,22 @@ export class HomePage implements OnInit, OnDestroy {
       this.ocrLanguage === 'khm+eng'
         ? 'Khmer & English'
         : this.ocrLanguage === 'khm'
-        ? 'Khmer'
-        : 'English';
+          ? 'Khmer'
+          : 'English';
     this.ocrStatusText = `Initializing OCR engine (${langLabel})...`;
     this.ocrError = null;
 
     try {
-      // Scale down image if oversized (>1800px) to prevent WASM OOM and speed up processing
-      const rawImage = page.displayDataUrl || page.croppedDataUrl || page.originalDataUrl;
-      const optimizedImage = await this.prepareImageForOcr(rawImage);
+      // Pass the clean image from the active page viewer directly to Tesseract
+      // (no destructive high-contrast binarization that turns wood grain/shadows into lines)
+      const cleanImage =
+        page.displayDataUrl || page.croppedDataUrl || page.originalDataUrl;
 
-      // Re-use or instantiate worker
-      if (!this.ocrWorkerInstance || this.ocrWorkerCurrentLang !== this.ocrLanguage) {
+      // Re-use or instantiate worker; tear down when language changes
+      if (
+        !this.ocrWorkerInstance ||
+        this.ocrWorkerCurrentLang !== this.ocrLanguage
+      ) {
         if (this.ocrWorkerInstance) {
           try {
             await this.ocrWorkerInstance.terminate();
@@ -1138,46 +1179,66 @@ export class HomePage implements OnInit, OnDestroy {
           this.ocrWorkerInstance = null;
         }
 
-        const langs = this.ocrLanguage.includes('+')
-          ? this.ocrLanguage.split('+')
-          : this.ocrLanguage;
+        const langs =
+          this.ocrLanguage === 'khm+eng'
+            ? ['khm', 'eng']
+            : this.ocrLanguage.includes('+')
+              ? this.ocrLanguage.split('+')
+              : [this.ocrLanguage];
 
         this.ocrWorkerInstance = await createWorker(langs, 1, {
-          logger: (m) => {
+          langPath: 'https://tessdata.projectnaptha.com/4.0.0_best',
+          logger: (m: any) => {
             if (m.status === 'recognizing text') {
-              this.ocrProgress = Math.min(100, Math.round((m.progress || 0) * 100));
+              this.ocrProgress = Math.min(
+                100,
+                Math.round((m.progress || 0) * 100),
+              );
               this.ocrStatusText = `Recognizing text (${this.ocrProgress}%)...`;
             } else if (m.status === 'loading tesseract core') {
               this.ocrStatusText = 'Loading OCR Core...';
             } else if (m.status === 'loading language traineddata') {
-              this.ocrStatusText = `Loading ${langLabel} Language Model...`;
+              const pct = Math.round((m.progress || 0) * 100);
+              this.ocrProgress = Math.min(99, pct);
+              this.ocrStatusText =
+                pct > 0
+                  ? `Downloading ${langLabel} model... ${pct}%`
+                  : `Downloading ${langLabel} model...`;
             } else if (m.status === 'initializing api') {
               this.ocrStatusText = 'Preparing recognition engine...';
+            } else if (m.status === 'initialized api') {
+              this.ocrProgress = 0;
+              this.ocrStatusText = 'Starting text recognition...';
             }
           },
         });
+
+        // Use standard page segmentation (PSM.AUTO = 3) without sparse text mode
+        await this.ocrWorkerInstance.setParameters({
+          tessedit_pageseg_mode: '3',
+          preserve_interword_spaces: '1',
+        });
+
         this.ocrWorkerCurrentLang = this.ocrLanguage;
       }
 
-      const ret = await this.ocrWorkerInstance.recognize(optimizedImage);
+      this.ocrStatusText = 'Analyzing document...';
+      const ret = await this.ocrWorkerInstance.recognize(cleanImage);
 
-      const recognized = (ret.data?.text || '').trim();
+      // Filter out garbage lines and background texture artifacts
+      const filtered = this.filterOcrLines(ret.data);
       this.ocrExtractedText =
-        recognized ||
-        'No readable text was detected on this page. Try applying the "Clean B&W" or "Magic Pro" filter to sharpen contrast.';
+        filtered ||
+        'No readable text was detected on this page. Try adjusting lighting or re-taking the photo with higher contrast.';
       this.ocrLastProcessedPageId = page.id;
       this.updateOcrCounts();
     } catch (err: any) {
       console.error('OCR Error:', err);
-      // Reset worker so next try initializes cleanly
       try {
-        if (this.ocrWorkerInstance) {
-          await this.ocrWorkerInstance.terminate();
-        }
+        if (this.ocrWorkerInstance) await this.ocrWorkerInstance.terminate();
       } catch (_) {}
       this.ocrWorkerInstance = null;
       this.ocrWorkerCurrentLang = '';
-
       this.ocrError =
         'Unable to recognize text. Please check your internet connection for language model downloading, or try switching language.';
     } finally {
@@ -1185,36 +1246,69 @@ export class HomePage implements OnInit, OnDestroy {
     }
   }
 
-  private prepareImageForOcr(dataUrl: string): Promise<string> {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        const MAX_OCR_DIM = 1800;
-        const w = img.width;
-        const h = img.height;
-        if (w <= MAX_OCR_DIM && h <= MAX_OCR_DIM) {
-          resolve(dataUrl);
-          return;
-        }
-        const scale = Math.min(MAX_OCR_DIM / w, MAX_OCR_DIM / h);
-        const nw = Math.round(w * scale);
-        const nh = Math.round(h * scale);
-        const canvas = document.createElement('canvas');
-        canvas.width = nw;
-        canvas.height = nh;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve(dataUrl);
-          return;
-        }
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(img, 0, 0, nw, nh);
-        resolve(canvas.toDataURL('image/jpeg', 0.9));
-      };
-      img.onerror = () => resolve(dataUrl);
-      img.src = dataUrl;
-    });
+  /**
+   * Filter out garbage lines and background noise:
+   * 1. Average word confidence on that line below 60
+   * 2. More than 40% of the characters are symbols/slashes (/, \, #, %, =, ), (, ;, §)
+   */
+  private filterOcrLines(data: any): string {
+    const SYMBOL_PATTERN = /[\/\\#%=\)\(;§]/g;
+    const rawLines = data?.lines || [];
+
+    if (!rawLines.length) {
+      const textLines = (data?.text || '').split('\n');
+      return textLines
+        .filter((line: string) => {
+          const trimmed = line.trim();
+          if (!trimmed) return false;
+          const nonSpaceChars = trimmed.replace(/\s/g, '').length;
+          if (nonSpaceChars === 0) return false;
+          const symbolMatches = trimmed.match(SYMBOL_PATTERN) || [];
+          return symbolMatches.length / nonSpaceChars <= 0.40;
+        })
+        .join('\n')
+        .trim();
+    }
+
+    const filteredLines: string[] = [];
+
+    for (const line of rawLines) {
+      const lineText = (line.text || '').trim();
+      if (!lineText) continue;
+
+      // 1. Average word confidence check (drop lines with average confidence < 60)
+      let avgConfidence = 0;
+      if (line.words && line.words.length > 0) {
+        const sum = line.words.reduce(
+          (acc: number, w: any) =>
+            acc + (typeof w.confidence === 'number' ? w.confidence : 0),
+          0,
+        );
+        avgConfidence = sum / line.words.length;
+      } else if (typeof line.confidence === 'number') {
+        avgConfidence = line.confidence;
+      } else {
+        avgConfidence = 100;
+      }
+
+      if (avgConfidence < 60) {
+        continue;
+      }
+
+      // 2. Symbol/slash density check: drop if > 40% of characters are symbols/slashes
+      const nonSpaceChars = lineText.replace(/\s/g, '').length;
+      if (nonSpaceChars === 0) continue;
+
+      const symbolMatches = lineText.match(SYMBOL_PATTERN) || [];
+      const symbolRatio = symbolMatches.length / nonSpaceChars;
+      if (symbolRatio > 0.40) {
+        continue;
+      }
+
+      filteredLines.push(lineText);
+    }
+
+    return filteredLines.join('\n').trim();
   }
 
   async ngOnDestroy() {
@@ -1266,7 +1360,12 @@ export class HomePage implements OnInit, OnDestroy {
 
   exportOcrTxt() {
     if (!this.ocrExtractedText) return;
-    const blob = new Blob([this.ocrExtractedText], { type: 'text/plain;charset=utf-8' });
+    // Prepend UTF-8 BOM (\uFEFF) so Windows Notepad / Excel detect UTF-8 and render
+    // Khmer script correctly without garbling the characters.
+    const bom = '\uFEFF';
+    const blob = new Blob([bom + this.ocrExtractedText], {
+      type: 'text/plain;charset=utf-8',
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     const baseName = this.activeDocFileName.replace(/\.pdf$/i, '');
@@ -1377,10 +1476,15 @@ export class HomePage implements OnInit, OnDestroy {
       for (const page of this.pages) {
         let imageBytes: ArrayBuffer;
         if (this.exportQuality === 'compressed') {
-          const compUrl = await this.compressImageDataUrl(page.displayDataUrl, 0.68);
+          const compUrl = await this.compressImageDataUrl(
+            page.displayDataUrl,
+            0.68,
+          );
           imageBytes = await fetch(compUrl).then((res) => res.arrayBuffer());
         } else {
-          imageBytes = await fetch(page.displayDataUrl).then((res) => res.arrayBuffer());
+          imageBytes = await fetch(page.displayDataUrl).then((res) =>
+            res.arrayBuffer(),
+          );
         }
         const embeddedImage = await pdfDoc.embedJpg(imageBytes);
         const imgW = embeddedImage.width;
@@ -1513,24 +1617,24 @@ export class HomePage implements OnInit, OnDestroy {
 
   async initStorageAndRestore() {
     try {
-      await this.loadRecentDocumentsList();
-
-      // Check if any stored documents are the legacy default sample receipt and remove them
       const db = await this.getDb();
-      for (const item of [...this.recentDocs]) {
-        const doc: SavedDocumentSession | undefined = await new Promise((resolve) => {
-          const tx = db.transaction('documents', 'readonly');
-          const store = tx.objectStore('documents');
-          const req = store.get(item.id);
-          req.onsuccess = () => resolve(req.result);
-          req.onerror = () => resolve(undefined);
-        });
 
-        if (
-          doc &&
-          doc.pages &&
-          (doc.pages.some((p) => p.id === 'sample_receipt') || doc.id === 'sample_receipt')
-        ) {
+      // Clean up legacy default sample receipts and any empty/corrupted documents
+      const allDocs: SavedDocumentSession[] = await new Promise((resolve) => {
+        const tx = db.transaction('documents', 'readonly');
+        const store = tx.objectStore('documents');
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => resolve([]);
+      });
+
+      for (const item of allDocs) {
+        const isLegacySample =
+          item.id === 'sample_receipt' ||
+          (item.pages && item.pages.some((p) => p.id === 'sample_receipt'));
+        const isEmpty = !item.pages || item.pages.length === 0;
+
+        if (isLegacySample || isEmpty) {
           await new Promise<void>((resolve) => {
             const tx = db.transaction('documents', 'readwrite');
             const store = tx.objectStore('documents');
@@ -1543,11 +1647,17 @@ export class HomePage implements OnInit, OnDestroy {
 
       await this.loadRecentDocumentsList();
 
-      if (this.recentDocs.length > 0) {
-        // Automatically restore user's own saved document session
+      const savedActiveDocId = localStorage.getItem('activeDocumentId');
+      const targetDoc = savedActiveDocId
+        ? this.recentDocs.find((d) => d.id === savedActiveDocId)
+        : null;
+
+      if (targetDoc) {
+        await this.switchOrRestoreDocument(targetDoc.id);
+      } else if (this.recentDocs.length > 0) {
         await this.switchOrRestoreDocument(this.recentDocs[0].id);
       } else {
-        // Clean start: empty stage ready for scanning or uploading
+        localStorage.removeItem('activeDocumentId');
         this.pages = [];
         this.activePageIndex = 0;
         this.pageSize = 'a4';
@@ -1557,21 +1667,48 @@ export class HomePage implements OnInit, OnDestroy {
       console.warn('Storage initialization fallback:', err);
       this.pages = [];
       this.activePageIndex = 0;
+      localStorage.removeItem('activeDocumentId');
     }
   }
 
   queueAutoSave() {
-    if (this.pages.length === 0) return;
-    if (this.saveTimeout) clearTimeout(this.saveTimeout);
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+    if (this.pages.length === 0) {
+      this.saveCurrentDocument();
+      return;
+    }
     this.saveTimeout = setTimeout(() => {
       this.saveCurrentDocument();
     }, 450);
   }
 
   async saveCurrentDocument() {
-    if (this.pages.length === 0) return;
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+
     try {
       const db = await this.getDb();
+
+      // Guard: when all pages are deleted (length === 0),
+      // explicitly delete the document entry from IndexedDB and localStorage
+      if (this.pages.length === 0) {
+        await new Promise<void>((resolve) => {
+          const tx = db.transaction('documents', 'readwrite');
+          const store = tx.objectStore('documents');
+          const req = store.delete(this.activeDocId);
+          req.onsuccess = () => resolve();
+          req.onerror = () => resolve();
+        });
+        localStorage.removeItem('activeDocumentId');
+        await this.loadRecentDocumentsList();
+        return;
+      }
+
       const thumbnail = this.pages[0]?.displayDataUrl || '';
       const doc: SavedDocumentSession = {
         id: this.activeDocId,
@@ -1592,28 +1729,41 @@ export class HomePage implements OnInit, OnDestroy {
         req.onerror = () => reject(req.error);
       });
 
+      localStorage.setItem('activeDocumentId', this.activeDocId);
       this.showSaveIndicator = true;
       setTimeout(() => (this.showSaveIndicator = false), 2200);
       await this.loadRecentDocumentsList();
     } catch (e) {
-      console.warn('Failed to auto-save document to IndexedDB:', e);
+      console.warn('Failed to save document to IndexedDB:', e);
     }
   }
 
   async loadRecentDocumentsList() {
     try {
       const db = await this.getDb();
-      const docs: SavedDocumentSession[] = await new Promise((resolve, reject) => {
-        const tx = db.transaction('documents', 'readonly');
-        const store = tx.objectStore('documents');
-        const req = store.getAll();
-        req.onsuccess = () => resolve(req.result || []);
-        req.onerror = () => reject(req.error);
-      });
+      const docs: SavedDocumentSession[] = await new Promise(
+        (resolve, reject) => {
+          const tx = db.transaction('documents', 'readonly');
+          const store = tx.objectStore('documents');
+          const req = store.getAll();
+          req.onsuccess = () => resolve(req.result || []);
+          req.onerror = () => reject(req.error);
+        },
+      );
 
-      docs.sort((a, b) => b.updatedAt - a.updatedAt);
+      // Only include valid documents with pages
+      const validDocs = docs.filter(
+        (d) =>
+          d &&
+          d.pages &&
+          d.pages.length > 0 &&
+          d.id !== 'sample_receipt' &&
+          !d.pages.some((p) => p.id === 'sample_receipt'),
+      );
 
-      this.recentDocs = docs.map((d) => ({
+      validDocs.sort((a, b) => b.updatedAt - a.updatedAt);
+
+      this.recentDocs = validDocs.map((d) => ({
         id: d.id,
         title: d.fileName.replace(/\.pdf$/i, ''),
         fileName: d.fileName,
@@ -1635,15 +1785,17 @@ export class HomePage implements OnInit, OnDestroy {
       await new Promise((r) => setTimeout(r, 16));
 
       const db = await this.getDb();
-      const doc: SavedDocumentSession | undefined = await new Promise((resolve, reject) => {
-        const tx = db.transaction('documents', 'readonly');
-        const store = tx.objectStore('documents');
-        const req = store.get(docId);
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-      });
+      const doc: SavedDocumentSession | undefined = await new Promise(
+        (resolve, reject) => {
+          const tx = db.transaction('documents', 'readonly');
+          const store = tx.objectStore('documents');
+          const req = store.get(docId);
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        },
+      );
 
-      if (doc) {
+      if (doc && doc.pages && doc.pages.length > 0) {
         this.activeDocId = doc.id;
         this.activeDocFileName = doc.fileName;
         this.pages = doc.pages;
@@ -1667,6 +1819,9 @@ export class HomePage implements OnInit, OnDestroy {
           URL.revokeObjectURL(this.generatedPdfUrl);
           this.generatedPdfUrl = null;
         }
+        localStorage.setItem('activeDocumentId', doc.id);
+      } else {
+        localStorage.removeItem('activeDocumentId');
       }
     } finally {
       this.isProcessing = false;
@@ -1674,6 +1829,10 @@ export class HomePage implements OnInit, OnDestroy {
   }
 
   async createNewDocument() {
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
     if (this.pages.length > 0) {
       await this.saveCurrentDocument();
     }
@@ -1690,6 +1849,7 @@ export class HomePage implements OnInit, OnDestroy {
       URL.revokeObjectURL(this.generatedPdfUrl);
       this.generatedPdfUrl = null;
     }
+    localStorage.removeItem('activeDocumentId');
   }
 
   deleteSavedDocument(docId: string, event?: Event) {
@@ -1700,6 +1860,11 @@ export class HomePage implements OnInit, OnDestroy {
       'Delete',
       async () => {
         try {
+          if (this.saveTimeout) {
+            clearTimeout(this.saveTimeout);
+            this.saveTimeout = null;
+          }
+
           const db = await this.getDb();
           await new Promise<void>((resolve, reject) => {
             const tx = db.transaction('documents', 'readwrite');
@@ -1709,13 +1874,32 @@ export class HomePage implements OnInit, OnDestroy {
             req.onerror = () => reject(req.error);
           });
 
+          const wasActive = this.activeDocId === docId;
+          if (wasActive) {
+            if (this.generatedPdfUrl) {
+              URL.revokeObjectURL(this.generatedPdfUrl);
+              this.generatedPdfUrl = null;
+            }
+            this.pages = [];
+            this.activePageIndex = 0;
+            this.isCropMode = false;
+            this.showRotateOptions = false;
+            this.showStraightenPanel = false;
+            localStorage.removeItem('activeDocumentId');
+          }
+
           await this.loadRecentDocumentsList();
 
-          if (this.activeDocId === docId) {
+          if (wasActive) {
             if (this.recentDocs.length > 0) {
               await this.switchOrRestoreDocument(this.recentDocs[0].id);
             } else {
-              await this.createNewDocument();
+              this.activeDocId = 'doc_' + Date.now();
+              this.activeDocFileName = `Document_1.pdf`;
+              this.pages = [];
+              this.activePageIndex = 0;
+              this.pageSize = 'a4';
+              this.pageOrientation = 'portrait';
             }
           }
         } catch (e) {
@@ -1727,10 +1911,89 @@ export class HomePage implements OnInit, OnDestroy {
     );
   }
 
+  deletePage(index: number, event?: Event) {
+    if (event) event.stopPropagation();
+    if (index < 0 || index >= this.pages.length) return;
+
+    const pageNum = index + 1;
+    this.openConfirmation(
+      'Delete Page?',
+      `Are you sure you want to delete Page ${pageNum}? This action cannot be undone.`,
+      'Delete Page',
+      async () => {
+        await this.performPageDeletion(index);
+      },
+      'delete',
+      'Cancel',
+    );
+  }
+
+  deleteCurrentPage() {
+    if (!this.activePage) {
+      this.promptUploadFirst('Delete Page');
+      return;
+    }
+    this.deletePage(this.activePageIndex);
+  }
+
+  private async performPageDeletion(index: number) {
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+
+    if (this.generatedPdfUrl) {
+      URL.revokeObjectURL(this.generatedPdfUrl);
+      this.generatedPdfUrl = null;
+    }
+
+    // Remove page from in-memory array
+    this.pages.splice(index, 1);
+
+    if (this.pages.length === 0) {
+      this.activePageIndex = 0;
+      this.isCropMode = false;
+      this.showRotateOptions = false;
+      this.showStraightenPanel = false;
+
+      // When the last remaining page is deleted, remove document from IndexedDB storage
+      try {
+        const db = await this.getDb();
+        await new Promise<void>((resolve) => {
+          const tx = db.transaction('documents', 'readwrite');
+          const store = tx.objectStore('documents');
+          const req = store.delete(this.activeDocId);
+          req.onsuccess = () => resolve();
+          req.onerror = () => resolve();
+        });
+      } catch (err) {
+        console.warn('Failed to remove empty document from IndexedDB:', err);
+      }
+
+      localStorage.removeItem('activeDocumentId');
+      await this.loadRecentDocumentsList();
+
+      this.activeDocId = 'doc_' + Date.now();
+      this.activeDocFileName = `Document_${this.recentDocs.length + 1}.pdf`;
+      this.pageSize = 'a4';
+      this.pageOrientation = 'portrait';
+    } else {
+      if (this.activePageIndex >= this.pages.length) {
+        this.activePageIndex = this.pages.length - 1;
+      }
+      this.isCropMode = false;
+
+      // Immediately persist updated pages array back to storage
+      await this.saveCurrentDocument();
+    }
+  }
+
   renameDocument(newName: string) {
     const trimmed = (newName || '').trim();
     if (!trimmed) return;
-    this.activeDocFileName = trimmed.endsWith('.pdf') ? trimmed : `${trimmed}.pdf`;
+    this.activeDocFileName = trimmed.endsWith('.pdf')
+      ? trimmed
+      : `${trimmed}.pdf`;
     this.queueAutoSave();
   }
 
@@ -1744,7 +2007,10 @@ export class HomePage implements OnInit, OnDestroy {
     const days = Math.floor(hours / 24);
     if (days === 1) return 'Yesterday';
     if (days < 7) return `${days}d ago`;
-    return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return new Date(ts).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+    });
   }
 
   // =========================================================================
@@ -1791,10 +2057,14 @@ export class HomePage implements OnInit, OnDestroy {
       }
 
       const zipBlob = await zip.generateAsync(
-        { type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } },
+        {
+          type: 'blob',
+          compression: 'DEFLATE',
+          compressionOptions: { level: 6 },
+        },
         (metadata) => {
           this.zipProgress = 75 + Math.round(metadata.percent * 0.25);
-        }
+        },
       );
 
       const url = URL.createObjectURL(zipBlob);
@@ -1821,7 +2091,10 @@ export class HomePage implements OnInit, OnDestroy {
     }
   }
 
-  private compressImageDataUrl(dataUrl: string, quality = 0.68): Promise<string> {
+  private compressImageDataUrl(
+    dataUrl: string,
+    quality = 0.68,
+  ): Promise<string> {
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
@@ -1870,8 +2143,14 @@ export class HomePage implements OnInit, OnDestroy {
 
           const sx = Math.max(0, Math.floor(minX * img.width));
           const sy = Math.max(0, Math.floor(minY * img.height));
-          const sw = Math.min(img.width - sx, Math.ceil((maxX - minX) * img.width));
-          const sh = Math.min(img.height - sy, Math.ceil((maxY - minY) * img.height));
+          const sw = Math.min(
+            img.width - sx,
+            Math.ceil((maxX - minX) * img.width),
+          );
+          const sh = Math.min(
+            img.height - sy,
+            Math.ceil((maxY - minY) * img.height),
+          );
 
           const dstCanvas = document.createElement('canvas');
           dstCanvas.width = Math.max(1, sw);
@@ -1957,9 +2236,15 @@ export class HomePage implements OnInit, OnDestroy {
         const srcMaxX = srcW - 2;
         const srcMaxY = srcH - 2;
 
-        const h0 = H[0], h1 = H[1], h2 = H[2];
-        const h3 = H[3], h4 = H[4], h5 = H[5];
-        const h6 = H[6], h7 = H[7], h8 = H[8];
+        const h0 = H[0],
+          h1 = H[1],
+          h2 = H[2];
+        const h3 = H[3],
+          h4 = H[4],
+          h5 = H[5];
+        const h6 = H[6],
+          h7 = H[7],
+          h8 = H[8];
 
         let dstIdx = 0;
         for (let y = 0; y < dstH; y++) {
@@ -1989,9 +2274,21 @@ export class HomePage implements OnInit, OnDestroy {
               const i01 = i00 + srcW4;
               const i11 = i01 + 4;
 
-              dstD[dstIdx] = srcD[i00] * w00 + srcD[i10] * w10 + srcD[i01] * w01 + srcD[i11] * w11;
-              dstD[dstIdx + 1] = srcD[i00 + 1] * w00 + srcD[i10 + 1] * w10 + srcD[i01 + 1] * w01 + srcD[i11 + 1] * w11;
-              dstD[dstIdx + 2] = srcD[i00 + 2] * w00 + srcD[i10 + 2] * w10 + srcD[i01 + 2] * w01 + srcD[i11 + 2] * w11;
+              dstD[dstIdx] =
+                srcD[i00] * w00 +
+                srcD[i10] * w10 +
+                srcD[i01] * w01 +
+                srcD[i11] * w11;
+              dstD[dstIdx + 1] =
+                srcD[i00 + 1] * w00 +
+                srcD[i10 + 1] * w10 +
+                srcD[i01 + 1] * w01 +
+                srcD[i11 + 1] * w11;
+              dstD[dstIdx + 2] =
+                srcD[i00 + 2] * w00 +
+                srcD[i10 + 2] * w10 +
+                srcD[i01 + 2] * w01 +
+                srcD[i11 + 2] * w11;
               dstD[dstIdx + 3] = 255;
             } else {
               const cx0 = Math.max(0, Math.min(srcW - 1, x0));
@@ -2011,9 +2308,21 @@ export class HomePage implements OnInit, OnDestroy {
               const w01 = (1.0 - fx) * fy;
               const w11 = fx * fy;
 
-              dstD[dstIdx] = srcD[i00] * w00 + srcD[i10] * w10 + srcD[i01] * w01 + srcD[i11] * w11;
-              dstD[dstIdx + 1] = srcD[i00 + 1] * w00 + srcD[i10 + 1] * w10 + srcD[i01 + 1] * w01 + srcD[i11 + 1] * w11;
-              dstD[dstIdx + 2] = srcD[i00 + 2] * w00 + srcD[i10 + 2] * w10 + srcD[i01 + 2] * w01 + srcD[i11 + 2] * w11;
+              dstD[dstIdx] =
+                srcD[i00] * w00 +
+                srcD[i10] * w10 +
+                srcD[i01] * w01 +
+                srcD[i11] * w11;
+              dstD[dstIdx + 1] =
+                srcD[i00 + 1] * w00 +
+                srcD[i10 + 1] * w10 +
+                srcD[i01 + 1] * w01 +
+                srcD[i11 + 1] * w11;
+              dstD[dstIdx + 2] =
+                srcD[i00 + 2] * w00 +
+                srcD[i10 + 2] * w10 +
+                srcD[i01 + 2] * w01 +
+                srcD[i11 + 2] * w11;
               dstD[dstIdx + 3] = 255;
             }
           }
@@ -2554,7 +2863,10 @@ export class HomePage implements OnInit, OnDestroy {
         const lum = new Float32Array(w * h);
         for (let i = 0; i < w * h; i++) {
           const idx = i << 2;
-          lum[i] = 0.299 * imgData[idx] + 0.587 * imgData[idx + 1] + 0.114 * imgData[idx + 2];
+          lum[i] =
+            0.299 * imgData[idx] +
+            0.587 * imgData[idx + 1] +
+            0.114 * imgData[idx + 2];
         }
 
         // 2. Background Reference Luminance from outer 5% border
@@ -2565,7 +2877,12 @@ export class HomePage implements OnInit, OnDestroy {
 
         for (let y = 0; y < h; y++) {
           for (let x = 0; x < w; x++) {
-            if (x < marginX || x >= w - marginX || y < marginY || y >= h - marginY) {
+            if (
+              x < marginX ||
+              x >= w - marginX ||
+              y < marginY ||
+              y >= h - marginY
+            ) {
               bgSum += lum[y * w + x];
               bgCount++;
             }
@@ -2580,11 +2897,19 @@ export class HomePage implements OnInit, OnDestroy {
           const row = y * w;
           for (let x = 1; x < w - 1; x++) {
             const gx =
-              (lum[row - w + x + 1] + 2 * lum[row + x + 1] + lum[row + w + x + 1]) -
-              (lum[row - w + x - 1] + 2 * lum[row + x - 1] + lum[row + w + x - 1]);
+              lum[row - w + x + 1] +
+              2 * lum[row + x + 1] +
+              lum[row + w + x + 1] -
+              (lum[row - w + x - 1] +
+                2 * lum[row + x - 1] +
+                lum[row + w + x - 1]);
             const gy =
-              (lum[row + w + x - 1] + 2 * lum[row + w + x] + lum[row + w + x + 1]) -
-              (lum[row - w + x - 1] + 2 * lum[row - w + x] + lum[row - w + x + 1]);
+              lum[row + w + x - 1] +
+              2 * lum[row + w + x] +
+              lum[row + w + x + 1] -
+              (lum[row - w + x - 1] +
+                2 * lum[row - w + x] +
+                lum[row - w + x + 1]);
             const gVal = Math.sqrt(gx * gx + gy * gy);
             grad[row + x] = gVal;
             if (gVal > maxGrad) maxGrad = gVal;
@@ -2635,8 +2960,8 @@ export class HomePage implements OnInit, OnDestroy {
 
             if (found) {
               hits.push({
-                x: Math.round(((hitX / w) * 100) * 10) / 10,
-                y: Math.round(((hitY / h) * 100) * 10) / 10,
+                x: Math.round((hitX / w) * 100 * 10) / 10,
+                y: Math.round((hitY / h) * 100 * 10) / 10,
               });
             }
           }
@@ -2649,8 +2974,14 @@ export class HomePage implements OnInit, OnDestroy {
           }
 
           hits.sort((a, b) => {
-            const da = Math.hypot(a.x - (startX === 0 ? 0 : 100), a.y - (startY === 0 ? 0 : 100));
-            const db = Math.hypot(b.x - (startX === 0 ? 0 : 100), b.y - (startY === 0 ? 0 : 100));
+            const da = Math.hypot(
+              a.x - (startX === 0 ? 0 : 100),
+              a.y - (startY === 0 ? 0 : 100),
+            );
+            const db = Math.hypot(
+              b.x - (startX === 0 ? 0 : 100),
+              b.y - (startY === 0 ? 0 : 100),
+            );
             return da - db;
           });
 
@@ -2667,10 +2998,22 @@ export class HomePage implements OnInit, OnDestroy {
 
         if (validX && validY) {
           resolve({
-            tl: { x: Math.max(1, Math.min(35, tl.x)), y: Math.max(1, Math.min(35, tl.y)) },
-            tr: { x: Math.max(65, Math.min(99, tr.x)), y: Math.max(1, Math.min(35, tr.y)) },
-            br: { x: Math.max(65, Math.min(99, br.x)), y: Math.max(65, Math.min(99, br.y)) },
-            bl: { x: Math.max(1, Math.min(35, bl.x)), y: Math.max(65, Math.min(99, bl.y)) },
+            tl: {
+              x: Math.max(1, Math.min(35, tl.x)),
+              y: Math.max(1, Math.min(35, tl.y)),
+            },
+            tr: {
+              x: Math.max(65, Math.min(99, tr.x)),
+              y: Math.max(1, Math.min(35, tr.y)),
+            },
+            br: {
+              x: Math.max(65, Math.min(99, br.x)),
+              y: Math.max(65, Math.min(99, br.y)),
+            },
+            bl: {
+              x: Math.max(1, Math.min(35, bl.x)),
+              y: Math.max(65, Math.min(99, bl.y)),
+            },
           });
         } else {
           resolve({
