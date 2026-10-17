@@ -662,8 +662,9 @@
             type="button"
             class="edit-action-btn"
             [class.active]="isCropMode"
+            [class.disabled-btn]="!activePage"
             (click)="toggleCropMode()"
-            title="Adjust 4 Corners Perspective Crop"
+            [title]="activePage ? 'Adjust 4 Corners Perspective Crop' : 'Upload or scan an image first'"
           >
             <svg class="edit-btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"/>
@@ -676,8 +677,9 @@
             type="button"
             class="edit-action-btn"
             [class.active]="showRotateOptions"
+            [class.disabled-btn]="!activePage"
             (click)="toggleRotateOptions()"
-            title="Rotate & Straighten Options"
+            [title]="activePage ? 'Rotate & Straighten Options' : 'Upload or scan an image first'"
           >
             <svg class="edit-btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
@@ -784,8 +786,9 @@
             type="button"
             class="edit-action-btn"
             [class.active]="activePage?.filter === 'bw'"
+            [class.disabled-btn]="!activePage"
             (click)="toggleFilterBw()"
-            title="Clean Black & White Filter"
+            [title]="activePage ? 'Clean Black & White Filter' : 'Upload or scan an image first'"
           >
             <svg class="edit-btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="9"/>
@@ -797,8 +800,9 @@
           <button
             type="button"
             class="edit-action-btn"
+            [class.disabled-btn]="!activePage"
             (click)="openOcrModal()"
-            title="Recognize Text with AI OCR"
+            [title]="activePage ? 'Recognize Text with AI OCR' : 'Upload or scan an image first'"
           >
             <svg class="edit-btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M7 4H4v3M17 4h3v3M7 20H4v-3M17 20h3v-3M9 9h6M12 9v7"/>
@@ -843,9 +847,9 @@
               [value]="pageSize"
               (change)="onPageSizeChange($event)"
             >
-              <option value="fit">Fit to Image (No Borders)</option>
-              <option value="a4">A4 (Edge-to-Edge)</option>
-              <option value="letter">US Letter (Edge-to-Edge)</option>
+              <option value="a4" [selected]="pageSize === 'a4'">A4 (Edge-to-Edge)</option>
+              <option value="fit" [selected]="pageSize === 'fit'">Fit to Image (No Borders)</option>
+              <option value="letter" [selected]="pageSize === 'letter'">US Letter (Edge-to-Edge)</option>
             </select>
             <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <polyline points="6 9 12 15 18 9"></polyline>
@@ -881,6 +885,43 @@
           </div>
           <h3 class="modal-title">Optical Character Recognition</h3>
           <p class="modal-meta">Extract text, numbers, and receipt data from {{ activeDocFileName }}</p>
+        </div>
+
+        <!-- OCR Language Selector -->
+        <div class="ocr-lang-selector-row">
+          <span class="ocr-lang-label">Language:</span>
+          <div class="ocr-lang-pills">
+            <button
+              type="button"
+              class="ocr-lang-pill"
+              [class.active]="ocrLanguage === 'khm+eng'"
+              (click)="changeOcrLanguage('khm+eng')"
+              [disabled]="isOcrRunning"
+              title="Khmer & English mixed recognition"
+            >
+              🇰🇭 Khmer + English
+            </button>
+            <button
+              type="button"
+              class="ocr-lang-pill"
+              [class.active]="ocrLanguage === 'eng'"
+              (click)="changeOcrLanguage('eng')"
+              [disabled]="isOcrRunning"
+              title="English only recognition"
+            >
+              🇬🇧 English Only
+            </button>
+            <button
+              type="button"
+              class="ocr-lang-pill"
+              [class.active]="ocrLanguage === 'khm'"
+              (click)="changeOcrLanguage('khm')"
+              [disabled]="isOcrRunning"
+              title="Khmer only recognition"
+            >
+              🇰🇭 Khmer Only
+            </button>
+          </div>
         </div>
 
         @if (isOcrRunning) {

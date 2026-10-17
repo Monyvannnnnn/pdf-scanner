@@ -2,12 +2,13 @@ import {
   Component,
   ElementRef,
   HostListener,
+  OnDestroy,
   OnInit,
   ViewChild,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { IonContent } from '@ionic/angular';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, PDFName } from 'pdf-lib';
 import { createWorker } from 'tesseract.js';
 import JSZip from 'jszip';
 import { Capacitor } from '@capacitor/core';
@@ -68,7 +69,7 @@ export interface SavedDocumentSession {
   standalone: true,
   imports: [CommonModule, IonContent],
 })
-export class HomePage implements OnInit {
+export class HomePage implements OnInit, OnDestroy {
   @ViewChild('cropOverlayRef') cropOverlayRef?: ElementRef<HTMLDivElement>;
   @ViewChild('fileInputRef') fileInputRef?: ElementRef<HTMLInputElement>;
   @ViewChild('cameraInputRef') cameraInputRef?: ElementRef<HTMLInputElement>;
@@ -88,7 +89,7 @@ export class HomePage implements OnInit {
 
   // Page Orientation & Size Setup
   pageOrientation: PageOrientation = 'portrait';
-  pageSize: PageSizeOption = 'fit';
+  pageSize: PageSizeOption = 'a4';
 
   // Interactive 4-Corner Perspective Cropping State
   isCropMode = false;
@@ -165,6 +166,9 @@ export class HomePage implements OnInit {
   ocrCharCount = 0;
   ocrError: string | null = null;
   ocrLastProcessedPageId = '';
+  ocrLanguage = 'khm+eng';
+  private ocrWorkerInstance: any = null;
+  private ocrWorkerCurrentLang = '';
 
   // Scan with Phone QR Modal State
   showQrModal = false;
@@ -511,18 +515,37 @@ export class HomePage implements OnInit {
     this.loupeBgSize = '350%';
   }
 
+  promptUploadFirst(featureName: string) {
+    this.openConfirmation(
+      'No Document Page',
+      `Please upload or scan an image first to use ${featureName}.`,
+      'Upload Image',
+      () => {
+        this.triggerUpload();
+      },
+      'warning',
+      'Cancel'
+    );
+  }
+
   toggleCropMode() {
+    if (!this.activePage) {
+      this.promptUploadFirst('Crop & Straighten');
+      return;
+    }
     this.isCropMode = !this.isCropMode;
     if (this.isCropMode) {
       this.showRotateOptions = false;
       this.showStraightenPanel = false;
-      if (this.activePage) {
-        this.loupeBgUrl = `url(${this.activePage.originalDataUrl})`;
-      }
+      this.loupeBgUrl = `url(${this.activePage.originalDataUrl})`;
     }
   }
 
   toggleRotateOptions() {
+    if (!this.activePage) {
+      this.promptUploadFirst('Rotate & Straighten');
+      return;
+    }
     this.showRotateOptions = !this.showRotateOptions;
     if (this.showRotateOptions) {
       this.isCropMode = false;
@@ -530,6 +553,10 @@ export class HomePage implements OnInit {
   }
 
   toggleStraightenPanel() {
+    if (!this.activePage) {
+      this.promptUploadFirst('Fine Angle Straighten');
+      return;
+    }
     this.showStraightenPanel = !this.showStraightenPanel;
     if (this.showStraightenPanel) {
       this.isCropMode = false;
@@ -1049,14 +1076,20 @@ export class HomePage implements OnInit {
   }
 
   toggleFilterBw() {
-    if (!this.activePage) return;
+    if (!this.activePage) {
+      this.promptUploadFirst('Clean B&W Filter');
+      return;
+    }
     const nextFilter: FilterType = this.activePage.filter === 'bw' ? 'original' : 'bw';
     this.setFilter(nextFilter);
   }
 
   // --- Real Tesseract.js OCR Methods ---
   async openOcrModal() {
-    if (!this.activePage) return;
+    if (!this.activePage) {
+      this.promptUploadFirst('Text Recognition (AI OCR)');
+      return;
+    }
     this.showOcrModal = true;
     this.ocrCopied = false;
     this.ocrError = null;
@@ -1069,45 +1102,127 @@ export class HomePage implements OnInit {
     }
   }
 
+  async changeOcrLanguage(lang: string) {
+    if (this.ocrLanguage === lang || this.isOcrRunning) return;
+    this.ocrLanguage = lang;
+    this.ocrLastProcessedPageId = '';
+    await this.runOcr();
+  }
+
   async runOcr() {
     const page = this.activePage;
     if (!page) return;
 
     this.isOcrRunning = true;
     this.ocrProgress = 0;
-    this.ocrStatusText = 'Initializing OCR engine...';
+    const langLabel =
+      this.ocrLanguage === 'khm+eng'
+        ? 'Khmer & English'
+        : this.ocrLanguage === 'khm'
+        ? 'Khmer'
+        : 'English';
+    this.ocrStatusText = `Initializing OCR engine (${langLabel})...`;
     this.ocrError = null;
 
     try {
-      const worker = await createWorker('eng', 1, {
-        logger: (m) => {
-          if (m.status === 'recognizing text') {
-            this.ocrProgress = Math.min(100, Math.round((m.progress || 0) * 100));
-            this.ocrStatusText = `Recognizing text (${this.ocrProgress}%)...`;
-          } else if (m.status === 'loading tesseract core') {
-            this.ocrStatusText = 'Loading OCR Core...';
-          } else if (m.status === 'loading language traineddata') {
-            this.ocrStatusText = 'Loading English Language Model...';
-          } else if (m.status === 'initializing api') {
-            this.ocrStatusText = 'Preparing recognition engine...';
-          }
-        },
-      });
+      // Scale down image if oversized (>1800px) to prevent WASM OOM and speed up processing
+      const rawImage = page.displayDataUrl || page.croppedDataUrl || page.originalDataUrl;
+      const optimizedImage = await this.prepareImageForOcr(rawImage);
 
-      // Best OCR quality: use displayDataUrl (which has active filters applied) or croppedDataUrl
-      const imageSource = page.displayDataUrl || page.croppedDataUrl || page.originalDataUrl;
-      const ret = await worker.recognize(imageSource);
-      await worker.terminate();
+      // Re-use or instantiate worker
+      if (!this.ocrWorkerInstance || this.ocrWorkerCurrentLang !== this.ocrLanguage) {
+        if (this.ocrWorkerInstance) {
+          try {
+            await this.ocrWorkerInstance.terminate();
+          } catch (_) {}
+          this.ocrWorkerInstance = null;
+        }
+
+        const langs = this.ocrLanguage.includes('+')
+          ? this.ocrLanguage.split('+')
+          : this.ocrLanguage;
+
+        this.ocrWorkerInstance = await createWorker(langs, 1, {
+          logger: (m) => {
+            if (m.status === 'recognizing text') {
+              this.ocrProgress = Math.min(100, Math.round((m.progress || 0) * 100));
+              this.ocrStatusText = `Recognizing text (${this.ocrProgress}%)...`;
+            } else if (m.status === 'loading tesseract core') {
+              this.ocrStatusText = 'Loading OCR Core...';
+            } else if (m.status === 'loading language traineddata') {
+              this.ocrStatusText = `Loading ${langLabel} Language Model...`;
+            } else if (m.status === 'initializing api') {
+              this.ocrStatusText = 'Preparing recognition engine...';
+            }
+          },
+        });
+        this.ocrWorkerCurrentLang = this.ocrLanguage;
+      }
+
+      const ret = await this.ocrWorkerInstance.recognize(optimizedImage);
 
       const recognized = (ret.data?.text || '').trim();
-      this.ocrExtractedText = recognized || 'No readable text was detected on this page. Try applying the "Clean B&W" or "Magic Pro" filter to sharpen contrast.';
+      this.ocrExtractedText =
+        recognized ||
+        'No readable text was detected on this page. Try applying the "Clean B&W" or "Magic Pro" filter to sharpen contrast.';
       this.ocrLastProcessedPageId = page.id;
       this.updateOcrCounts();
     } catch (err: any) {
       console.error('OCR Error:', err);
-      this.ocrError = 'Unable to recognize text. Please check your internet connection for first-time model loading, or try again.';
+      // Reset worker so next try initializes cleanly
+      try {
+        if (this.ocrWorkerInstance) {
+          await this.ocrWorkerInstance.terminate();
+        }
+      } catch (_) {}
+      this.ocrWorkerInstance = null;
+      this.ocrWorkerCurrentLang = '';
+
+      this.ocrError =
+        'Unable to recognize text. Please check your internet connection for language model downloading, or try switching language.';
     } finally {
       this.isOcrRunning = false;
+    }
+  }
+
+  private prepareImageForOcr(dataUrl: string): Promise<string> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX_OCR_DIM = 1800;
+        const w = img.width;
+        const h = img.height;
+        if (w <= MAX_OCR_DIM && h <= MAX_OCR_DIM) {
+          resolve(dataUrl);
+          return;
+        }
+        const scale = Math.min(MAX_OCR_DIM / w, MAX_OCR_DIM / h);
+        const nw = Math.round(w * scale);
+        const nh = Math.round(h * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = nw;
+        canvas.height = nh;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(dataUrl);
+          return;
+        }
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, nw, nh);
+        resolve(canvas.toDataURL('image/jpeg', 0.9));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  }
+
+  async ngOnDestroy() {
+    if (this.ocrWorkerInstance) {
+      try {
+        await this.ocrWorkerInstance.terminate();
+      } catch (_) {}
+      this.ocrWorkerInstance = null;
     }
   }
 
@@ -1285,9 +1400,17 @@ export class HomePage implements OnInit {
           pageW = baseW;
           pageH = (baseW * imgH) / imgW;
         } else {
-          // 'fit': Exact 1:1 image pixels to PDF points (Zero white background)
-          pageW = imgW;
-          pageH = imgH;
+          // 'fit': Exact image aspect ratio normalized to standard document bounds (Zero white background)
+          const maxW = this.pageOrientation === 'landscape' ? 841.89 : 595.28;
+          const maxH = this.pageOrientation === 'landscape' ? 595.28 : 841.89;
+          const scale = Math.min(maxW / imgW, maxH / imgH, 1);
+          if (imgW > maxW || imgH > maxH) {
+            pageW = imgW * scale;
+            pageH = imgH * scale;
+          } else {
+            pageW = imgW;
+            pageH = imgH;
+          }
         }
 
         const pdfPage = pdfDoc.addPage([pageW, pageH]);
@@ -1297,6 +1420,24 @@ export class HomePage implements OnInit {
           width: pageW,
           height: pageH,
         });
+      }
+
+      // Configure PDF Catalog to automatically open in "Fit Page" mode
+      // This ensures Chrome, Edge, Adobe Acrobat, and Apple Preview default to showing the full page
+      // (~50% zoom on standard screens) without requiring the user to zoom out manually.
+      const allPages = pdfDoc.getPages();
+      if (allPages.length > 0) {
+        const firstPage = allPages[0];
+        const openAction = pdfDoc.context.obj([
+          firstPage.ref,
+          PDFName.of('Fit'),
+        ]);
+        pdfDoc.catalog.set(PDFName.of('OpenAction'), openAction);
+        pdfDoc.catalog.set(PDFName.of('PageLayout'), PDFName.of('SinglePage'));
+
+        const viewerPrefs = pdfDoc.catalog.getOrCreateViewerPreferences();
+        viewerPrefs.setFitWindow(true);
+        viewerPrefs.setCenterWindow(true);
       }
 
       const pdfBytes = await pdfDoc.save();
@@ -1342,7 +1483,7 @@ export class HomePage implements OnInit {
 
   previewPdf() {
     if (!this.generatedPdfUrl) return;
-    window.open(this.generatedPdfUrl, '_blank');
+    window.open(`${this.generatedPdfUrl}#view=Fit`, '_blank');
   }
 
   closeExportModal() {
@@ -1409,6 +1550,8 @@ export class HomePage implements OnInit {
         // Clean start: empty stage ready for scanning or uploading
         this.pages = [];
         this.activePageIndex = 0;
+        this.pageSize = 'a4';
+        this.pageOrientation = 'portrait';
       }
     } catch (err) {
       console.warn('Storage initialization fallback:', err);
@@ -1505,7 +1648,14 @@ export class HomePage implements OnInit {
         this.activeDocFileName = doc.fileName;
         this.pages = doc.pages;
         this.pageOrientation = doc.pageOrientation || 'portrait';
-        this.pageSize = doc.pageSize || 'fit';
+        // Always enforce A4 as default; upgrade legacy 'fit' defaults to 'a4'
+        if (!doc.pageSize || doc.pageSize === 'fit') {
+          this.pageSize = 'a4';
+          doc.pageSize = 'a4';
+          this.queueAutoSave();
+        } else {
+          this.pageSize = doc.pageSize;
+        }
         this.activePageIndex = Math.min(
           doc.activePageIndex || 0,
           Math.max(0, doc.pages.length - 1),
@@ -1531,6 +1681,8 @@ export class HomePage implements OnInit {
     this.activeDocFileName = `Document_${this.recentDocs.length + 1}.pdf`;
     this.pages = [];
     this.activePageIndex = 0;
+    this.pageSize = 'a4';
+    this.pageOrientation = 'portrait';
     this.isCropMode = false;
     this.showRotateOptions = false;
     this.showStraightenPanel = false;

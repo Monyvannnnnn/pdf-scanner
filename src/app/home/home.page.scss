@@ -1321,6 +1321,26 @@
       }
     }
 
+    &.disabled-btn {
+      opacity: 0.62;
+      background: #f8fafc;
+      border-color: #e2e8f0;
+      color: #94a3b8;
+
+      .edit-btn-icon {
+        color: #94a3b8;
+      }
+
+      &:hover {
+        background: #f1f5f9;
+        border-color: #cbd5e1;
+        color: #64748b;
+        .edit-btn-icon {
+          color: #64748b;
+        }
+      }
+    }
+
     &:active {
       transform: scale(0.98);
     }
@@ -2192,6 +2212,60 @@
 @keyframes ocrScanBeam {
   0% { transform: translateY(0); }
   100% { transform: translateY(66px); }
+}
+
+.ocr-lang-selector-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  margin-bottom: 12px;
+  padding: 6px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+
+  .ocr-lang-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #475569;
+    flex-shrink: 0;
+  }
+
+  .ocr-lang-pills {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+
+    .ocr-lang-pill {
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      background: #ffffff;
+      color: #334155;
+      cursor: pointer;
+      transition: all 0.15s ease;
+
+      &:hover:not(:disabled) {
+        border-color: #ec1f28;
+        color: #ec1f28;
+      }
+
+      &.active {
+        background: #ec1f28;
+        border-color: #ec1f28;
+        color: #ffffff;
+        box-shadow: 0 2px 6px rgba(236, 31, 40, 0.25);
+      }
+
+      &:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+    }
+  }
 }
 
 .ocr-meta-bar {
