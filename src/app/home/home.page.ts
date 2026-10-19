@@ -1642,7 +1642,7 @@ export class HomePage implements OnInit, OnDestroy {
         this.isExtractingApInvoice = true;
         this.isOcrRunning = true;
         this.ocrProgress = 20;
-        this.ocrStatusText = 'Analyzing document with Gemini 2.5 Flash Vision AI...';
+        this.ocrStatusText = 'Analyzing document with Gemini Vision AI...';
         this.showInvoiceJsonModal = true;
         this.showApInvoiceModal = true;
         if (!preserveActiveTab) {
@@ -1664,7 +1664,7 @@ export class HomePage implements OnInit, OnDestroy {
         this.ocrExtractedText = extractedInvoiceJson.rawOcrText || '';
         this.updateOcrCounts();
         this.ocrProgress = 100;
-        this.ocrStatusText = 'Gemini 2.5 Flash Vision Extraction Complete';
+        this.ocrStatusText = 'Gemini Vision Extraction Complete';
         this.isExtractingApInvoice = false;
         this.isOcrRunning = false;
         this.isApModalOpen = true; // Opens your FieldBi 3-Tab Glass Review Modal

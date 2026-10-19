@@ -117,25 +117,69 @@ export class GeminiInvoiceService {
       required: ['grandTotal', 'invoiceNumber'],
     };
 
-    // Call Gemini 2.0 Flash for high-speed, accurate multilingual (English/Khmer) vision extraction
+    // Try available models in order of capability, falling back automatically if one hits a 429 rate limit or quota cap
+    const candidateModels = [
+      'gemini-3.8-flash',
+      'gemini-3.5-flash',
+      'gemini-flash-latest',
+      'gemini-3.5-flash-lite',
+    ];
+
     const ai = this.getClient();
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [
-        {
-          inlineData: {
-            data: base64Data,
-            mimeType: mimeType,
+    let response: any = null;
+    let lastError: any = null;
+
+    for (const model of candidateModels) {
+      try {
+        response = await ai.models.generateContent({
+          model,
+          contents: [
+            {
+              inlineData: {
+                data: base64Data,
+                mimeType: mimeType,
+              },
+            },
+            'Accurately extract all AP invoice details into the requested JSON schema. In rawOcrText, provide the full, verbatim line-by-line transcription of all text visible on the document separated with clean line breaks (\n). Preserve Khmer and English characters where present, normalize dates to YYYY-MM-DD, and ensure math fields match.',
+          ],
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: invoiceSchema,
+            temperature: 0.0,
           },
-        },
-        'Accurately extract all AP invoice details into the requested JSON schema. In rawOcrText, provide the full, verbatim line-by-line transcription of all text visible on the document separated with clean line breaks (\n). Preserve Khmer and English characters where present, normalize dates to YYYY-MM-DD, and ensure math fields match.',
-      ],
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: invoiceSchema,
-        temperature: 0.0,
-      },
-    });
+        });
+
+        if (response?.text) {
+          break; // successfully extracted
+        }
+      } catch (err: any) {
+        lastError = err;
+        const errMsg = String(err?.message || err || '');
+        const isQuotaOrUnavailable =
+          errMsg.includes('429') ||
+          errMsg.includes('RESOURCE_EXHAUSTED') ||
+          errMsg.includes('quota') ||
+          errMsg.includes('404') ||
+          errMsg.includes('503');
+
+        if (isQuotaOrUnavailable) {
+          console.warn(
+            `[GeminiInvoiceService] Model ${model} quota reached or unavailable. Falling back to next candidate model...`,
+          );
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    if (!response || !response.text) {
+      throw (
+        lastError ||
+        new Error(
+          'Gemini AI extraction quota exceeded on all available models. Please provide a custom Gemini API key or try again later.',
+        )
+      );
+    }
 
     const parsedJson = JSON.parse(response.text!) as APInvoiceJSON;
 
