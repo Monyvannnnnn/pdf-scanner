@@ -1526,6 +1526,12 @@ export class HomePage implements OnInit, OnDestroy {
         continue;
       }
 
+      // 3. Drop lines that are purely horizontal dividers, underlines, or isolated noise letters (e.g. "_   ត  យ")
+      const lettersAndDigits = lineText.replace(/[^A-Za-z0-9\u1780-\u17FF]/g, '');
+      if (lettersAndDigits.length < 3 && /^[_\-.:~*+=|#\s]+/.test(lineText)) {
+        continue;
+      }
+
       filteredLines.push(lineText);
     }
 
@@ -1745,16 +1751,20 @@ export class HomePage implements OnInit, OnDestroy {
    * Extracts vendor name from the top lines, filtering keywords, addresses, and noise artifacts.
    */
   private extractVendorName(lines: string[]): string {
-    // Usually, the vendor name is within the first 5 lines of the invoice
-    const topLines = lines.slice(0, 5);
+    // Usually, the vendor name is within the first 8 lines of the invoice
+    const topLines = lines.slice(0, 8);
 
     // Words to ignore if they appear at the top
-    const ignoreWords = ['invoice', 'bill to', 'ship to', 'logo', 'date', 'phone', 'វិក្កយបត្រ'];
+    const ignoreWords = ['invoice', 'bill to', 'ship to', 'logo', 'date', 'phone', 'វិក្កយបត្រ', 'tax', 'receipt', 'tel', 'fax', 'po box'];
 
     for (const line of topLines) {
-      const clean = line.replace(/\s+/g, ' ').trim();
+      // Strip leading and trailing non-alphanumeric / non-Khmer characters (e.g. _, -, ., :, |, #, etc.)
+      const clean = line.replace(/^[_\s\-.:|#~*+=]+/, '').replace(/[_\s\-.:|#~*+=]+$/, '').replace(/\s+/g, ' ').trim();
+      if (!clean) continue;
+
       const lower = clean.toLowerCase();
       const isIgnored = ignoreWords.some((w) => lower.includes(w));
+      if (isIgnored) continue;
 
       // Filter street numbers and address lines
       if (
@@ -1766,18 +1776,18 @@ export class HomePage implements OnInit, OnDestroy {
       }
       if (/^\d+([A-Za-z]?)[,\s]/.test(clean)) continue;
 
-      // Filter out fragmented noise artifacts with only 1-2 character fragments (like "i Le 4")
+      // Must have at least 3 letters/Khmer characters in total
+      const lettersOnly = clean.replace(/[^A-Za-z\u1780-\u17FF]/g, '');
+      if (lettersOnly.length < 3) continue;
+
+      // Filter out fragmented single-character noise artifacts (e.g. "_   ត  យ")
       const words = clean.split(' ').filter((w) => /[A-Za-z\u1780-\u17FF]/.test(w));
       const hasSubstantialWord = words.some(
         (w) => w.replace(/[^A-Za-z\u1780-\u17FF]/g, '').length >= 3,
       );
       if (!hasSubstantialWord) continue;
 
-      // If the line has valid company text and isn't a header label
-      if (clean.length > 2 && !isIgnored) {
-        // Clean up any trailing garbage characters like "oo" or random punctuation
-        return clean.replace(/[\s,.-]+(oo|inc|llc)?\.?$/i, '').trim();
-      }
+      return clean.replace(/[\s,.-]+(oo)?\.?$/i, '').trim();
     }
 
     return 'Unknown Vendor';
@@ -1866,8 +1876,15 @@ export class HomePage implements OnInit, OnDestroy {
 
     // Vendor Name (Smart heuristic with rule-based address/noise filtering)
     let vendorName = this.extractVendorName(lines);
-    if (vendorName === 'Unknown Vendor' && lines.length > 0 && lines[0].length >= 3) {
-      vendorName = lines[0];
+    if (vendorName === 'Unknown Vendor') {
+      for (const line of lines.slice(0, 6)) {
+        const cleaned = line.replace(/^[_\s\-.:|#~*+=]+/, '').replace(/[_\s\-.:|#~*+=]+$/, '').trim();
+        const letters = cleaned.replace(/[^A-Za-z\u1780-\u17FF]/g, '');
+        if (letters.length >= 3 && !/(invoice|total|tax|bill|date|phone|due)/i.test(cleaned)) {
+          vendorName = cleaned;
+          break;
+        }
+      }
     }
 
     // Vendor address components from header lines
