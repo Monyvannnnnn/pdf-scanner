@@ -4078,7 +4078,9 @@
         .json-code-block {
           margin: 0;
           padding: 18px 20px;
-          font-family: 'Kantumruy Pro', 'Noto Sans Khmer', 'Khmer OS Siemreap', 'SF Mono', Monaco, Menlo, Consolas, monospace;
+          font-family:
+            'Kantumruy Pro', 'Noto Sans Khmer', 'Khmer OS Siemreap', 'SF Mono',
+            Monaco, Menlo, Consolas, monospace;
           font-size: 13px;
           line-height: 1.7;
           color: #38bdf8;
@@ -4115,7 +4117,9 @@
           color: #0f172a;
           margin: 0 0 12px 0;
           letter-spacing: -0.2px;
-          font-family: 'Kantumruy Pro', 'Noto Sans Khmer', 'Khmer OS Siemreap', var(--font-family-base, sans-serif);
+          font-family:
+            'Kantumruy Pro', 'Noto Sans Khmer', 'Khmer OS Siemreap',
+            var(--font-family-base, sans-serif);
         }
 
         .btn-add-line-item {
@@ -4155,7 +4159,9 @@
               color: #475569;
               text-transform: uppercase;
               letter-spacing: 0.4px;
-              font-family: 'Kantumruy Pro', 'Noto Sans Khmer', 'Khmer OS Siemreap', var(--font-family-base, sans-serif);
+              font-family:
+                'Kantumruy Pro', 'Noto Sans Khmer', 'Khmer OS Siemreap',
+                var(--font-family-base, sans-serif);
             }
 
             .form-field-input,
@@ -4168,7 +4174,9 @@
               border: 1px solid #cbd5e1;
               background: #ffffff;
               color: #0f172a;
-              font-family: 'Kantumruy Pro', 'Noto Sans Khmer', 'Khmer OS Siemreap', var(--font-family-base, sans-serif);
+              font-family:
+                'Kantumruy Pro', 'Noto Sans Khmer', 'Khmer OS Siemreap',
+                var(--font-family-base, sans-serif);
               box-sizing: border-box;
               transition: all 0.15s ease;
 
@@ -4206,7 +4214,9 @@
               letter-spacing: 0.4px;
               color: #64748b;
               text-align: left;
-              font-family: 'Kantumruy Pro', 'Noto Sans Khmer', 'Khmer OS Siemreap', var(--font-family-base, sans-serif);
+              font-family:
+                'Kantumruy Pro', 'Noto Sans Khmer', 'Khmer OS Siemreap',
+                var(--font-family-base, sans-serif);
 
               &.col-right {
                 text-align: right;
@@ -4254,7 +4264,9 @@
                 padding: 6px 8px;
                 font-size: 13px;
                 line-height: 1.5;
-                font-family: 'Kantumruy Pro', 'Noto Sans Khmer', 'Khmer OS Siemreap', var(--font-family-base, sans-serif);
+                font-family:
+                  'Kantumruy Pro', 'Noto Sans Khmer', 'Khmer OS Siemreap',
+                  var(--font-family-base, sans-serif);
                 background: transparent;
                 color: #0f172a;
                 box-sizing: border-box;
@@ -4402,8 +4414,6 @@
                 text-align: right;
                 border: 1px solid #cbd5e1;
                 border-radius: 6px;
-                background: #ffffff;
-                color: #0f172a;
                 box-sizing: border-box;
 
                 &:focus {
@@ -4492,7 +4502,8 @@
         border: 1px solid #cbd5e1;
         border-radius: 10px;
         padding: 14px;
-        font-family: 'Kantumruy Pro', 'Noto Sans Khmer', 'Khmer OS Siemreap', 'Khmer OS',
+        font-family:
+          'Kantumruy Pro', 'Noto Sans Khmer', 'Khmer OS Siemreap', 'Khmer OS',
           ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
         font-size: 13.5px;
         line-height: 1.75;
@@ -4501,7 +4512,9 @@
         resize: vertical;
         box-sizing: border-box;
         margin-bottom: 12px;
-        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        transition:
+          border-color 0.15s ease,
+          box-shadow 0.15s ease;
 
         &:focus {
           outline: none;
