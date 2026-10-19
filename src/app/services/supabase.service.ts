@@ -151,22 +151,54 @@ export class SupabaseService {
       const fullRawText =
         rawText || extractedJson.rawOcrText || extractedJson.raw_text || '';
 
-      // 2. Insert into 'invoices' table
-      const { data: invoiceRecord, error: invoiceError } = await client
+      const poNumber = extractedJson.po_number || extractedJson.poNumber || null;
+      const paymentTerms = extractedJson.payment_terms || extractedJson.paymentTerms || null;
+      const billedTo = extractedJson.billed_to || extractedJson.billTo?.name || extractedJson.billedTo || null;
+      const dueDate = extractedJson.due_date || extractedJson.dueDate || null;
+
+      // 2. Insert into 'invoices' table (tries with PO, terms, billed_to first, falls back if columns don't exist yet)
+      const invoicePayload: any = {
+        vendor_name: vendorName,
+        invoice_number: invoiceNumber,
+        issue_date: issueDate,
+        currency,
+        subtotal,
+        tax_amount: taxAmount,
+        grand_total: grandTotal,
+        raw_text: fullRawText,
+        pdf_url: pdfUrl,
+      };
+
+      const extendedPayload: any = {
+        ...invoicePayload,
+        po_number: poNumber,
+        payment_terms: paymentTerms,
+        billed_to: billedTo,
+        due_date: dueDate,
+      };
+
+      let invoiceRecord: any = null;
+      let invoiceError: any = null;
+
+      const primaryInsert = await client
         .from('invoices')
-        .insert({
-          vendor_name: vendorName,
-          invoice_number: invoiceNumber,
-          issue_date: issueDate,
-          currency,
-          subtotal,
-          tax_amount: taxAmount,
-          grand_total: grandTotal,
-          raw_text: fullRawText,
-          pdf_url: pdfUrl,
-        })
+        .insert(extendedPayload)
         .select()
         .single();
+
+      if (primaryInsert.error && (primaryInsert.error.code === '42703' || primaryInsert.error.message?.includes('column'))) {
+        // Fallback: remote table might not have extended columns yet
+        const retryInsert = await client
+          .from('invoices')
+          .insert(invoicePayload)
+          .select()
+          .single();
+        invoiceRecord = retryInsert.data;
+        invoiceError = retryInsert.error;
+      } else {
+        invoiceRecord = primaryInsert.data;
+        invoiceError = primaryInsert.error;
+      }
 
       if (invoiceError) {
         // Fallback: If table 'invoices' does not exist yet in project, try legacy 'ap_invoices'
@@ -187,8 +219,9 @@ export class SupabaseService {
       // 3. Insert Line Items if any exist (supports line_items or items)
       const rawItems = extractedJson.line_items || extractedJson.items || [];
       if (rawItems && rawItems.length > 0) {
-        const lineItemsToInsert = rawItems.map((item: any) => ({
+        const lineItemsWithCode = rawItems.map((item: any) => ({
           invoice_id: invoiceId,
+          item_code: item.item_code || item.itemCode || item.code || item.sku || null,
           description: item.description || '',
           quantity: item.qty || item.quantity || 1,
           unit_price:
@@ -203,9 +236,23 @@ export class SupabaseService {
 
         const { error: lineError } = await client
           .from('invoice_line_items')
-          .insert(lineItemsToInsert);
+          .insert(lineItemsWithCode);
 
-        if (lineError) {
+        if (lineError && (lineError.code === '42703' || lineError.message?.includes('column'))) {
+          const fallbackLineItems = lineItemsWithCode.map((item: any) => ({
+            invoice_id: item.invoice_id,
+            description: item.description,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            total: item.total,
+          }));
+          const { error: retryLineError } = await client
+            .from('invoice_line_items')
+            .insert(fallbackLineItems);
+          if (retryLineError) {
+            console.error('Error saving line items on fallback:', retryLineError);
+          }
+        } else if (lineError) {
           console.error('Error saving line items:', lineError);
         }
       }

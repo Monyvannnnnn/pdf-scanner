@@ -12,11 +12,24 @@ create table if not exists public.invoices (
     issue_date date,
     currency text,
     subtotal numeric(12, 2),
+    tax_rate numeric(5, 2),
     tax_amount numeric(12, 2),
     grand_total numeric(12, 2),
+    po_number text,
+    payment_terms text,
+    billed_to text,
+    due_date date,
     raw_text text,
     pdf_url text -- Optional: link to file stored in Supabase Storage
 );
+
+-- Extended column migrations (safe if tables already exist)
+alter table public.invoices add column if not exists po_number text;
+alter table public.invoices add column if not exists payment_terms text;
+alter table public.invoices add column if not exists billed_to text;
+alter table public.invoices add column if not exists due_date date;
+alter table public.invoices add column if not exists tax_rate numeric(5, 2);
+alter table public.invoice_line_items add column if not exists item_code text;
 
 -- 2. Line Items Table (Linked to Invoices)
 create table if not exists public.invoice_line_items (

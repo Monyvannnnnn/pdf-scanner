@@ -2120,6 +2120,20 @@ export class HomePage implements OnInit, OnDestroy {
     );
     const dueDate = this.standardizeDateString(dueMatch ? dueMatch[1] : '');
 
+    // PO Number:
+    // English: PO Number, PO #, Purchase Order #, P.O. #
+    const poMatch = convertedDigitsText.match(
+      /(?:po\s*(?:no|number|#)|purchase\s*order\s*(?:no|number|#)?|p\.o\.\s*#?)\s*[:.-]?\s*([A-Za-z0-9-_/]+)/i,
+    );
+    const poNumber = poMatch ? poMatch[1].trim() : '';
+
+    // Payment Terms:
+    // English: Payment Terms, Terms, Pay Terms (e.g. Net 30, Due on Receipt)
+    const termsMatch = convertedDigitsText.match(
+      /(?:payment\s*terms|terms\s*of\s*payment|terms)\s*[:.-]?\s*([^\n\r,;]{3,30})/i,
+    );
+    const paymentTerms = termsMatch ? termsMatch[1].trim() : '';
+
     // 4. Billed To / Customer
     // English: Billed To, Bill To, Customer, Client, Sold To
     // Khmer: អតិថិជន, ឈ្មោះអតិថិជន, អតិថិជនឈ្មោះ, ជូនចំពោះ, អ្នកទិញ
@@ -2266,6 +2280,8 @@ export class HomePage implements OnInit, OnDestroy {
         name: billedTo,
       },
       invoiceNumber,
+      poNumber,
+      paymentTerms,
       invoiceDate: invoiceDate || new Date().toISOString().split('T')[0],
       dueDate,
       items,
@@ -2425,6 +2441,7 @@ export class HomePage implements OnInit, OnDestroy {
     const nextNo = this.extractedInvoiceJson.items.length + 1;
     this.extractedInvoiceJson.items.push({
       itemNo: nextNo,
+      itemCode: '',
       description: `Item ${nextNo}`,
       quantity: 1,
       unitPrice: 0,
@@ -2454,6 +2471,61 @@ export class HomePage implements OnInit, OnDestroy {
   }
 
   /**
+   * Called when subtotal is manually edited
+   */
+  onSubtotalChange() {
+    if (!this.extractedInvoiceJson) return;
+    const subtotal = Number(this.extractedInvoiceJson.subtotal) || 0;
+    const rate = Number(this.extractedInvoiceJson.taxRate) || 0;
+    if (rate > 0) {
+      this.extractedInvoiceJson.taxAmount =
+        Math.round((subtotal * (rate / 100)) * 100) / 100;
+    }
+    const taxAmt = Number(this.extractedInvoiceJson.taxAmount) || 0;
+    this.extractedInvoiceJson.grandTotal = Math.round((subtotal + taxAmt) * 100) / 100;
+  }
+
+  /**
+   * Called when Tax Rate / VAT % is edited
+   */
+  onTaxRateChange() {
+    if (!this.extractedInvoiceJson) return;
+    const subtotal = Number(this.extractedInvoiceJson.subtotal) || 0;
+    const rate = Number(this.extractedInvoiceJson.taxRate) || 0;
+    if (rate >= 0 && subtotal > 0) {
+      this.extractedInvoiceJson.taxAmount =
+        Math.round((subtotal * (rate / 100)) * 100) / 100;
+    }
+    const taxAmt = Number(this.extractedInvoiceJson.taxAmount) || 0;
+    this.extractedInvoiceJson.grandTotal = Math.round((subtotal + taxAmt) * 100) / 100;
+  }
+
+  /**
+   * Called when actual calculated Tax Amount is edited (for flat tax value)
+   */
+  onTaxAmountChange() {
+    if (!this.extractedInvoiceJson) return;
+    const subtotal = Number(this.extractedInvoiceJson.subtotal) || 0;
+    const taxAmt = Number(this.extractedInvoiceJson.taxAmount) || 0;
+    if (subtotal > 0 && taxAmt >= 0) {
+      this.extractedInvoiceJson.taxRate =
+        Math.round((taxAmt / subtotal) * 1000) / 10;
+    }
+    this.extractedInvoiceJson.grandTotal = Math.round((subtotal + taxAmt) * 100) / 100;
+  }
+
+  /**
+   * Dedicated manual edit handler for Grand Total
+   */
+  onGrandTotalChange() {
+    if (!this.extractedInvoiceJson) return;
+    this.extractedInvoiceJson.grandTotal = Math.max(
+      0,
+      Number(this.extractedInvoiceJson.grandTotal) || 0,
+    );
+  }
+
+  /**
    * Auto-recalculates subtotal, tax amount, and grand total in Tab 2 Form Preview
    */
   recalculateGrandTotal() {
@@ -2462,12 +2534,13 @@ export class HomePage implements OnInit, OnDestroy {
     const subtotal = items.reduce((sum: number, item: any) => sum + (item.total || 0), 0);
     this.extractedInvoiceJson.subtotal = Math.round(subtotal * 100) / 100;
 
-    if (this.extractedInvoiceJson.taxRate > 0) {
+    const rate = Number(this.extractedInvoiceJson.taxRate) || 0;
+    if (rate > 0) {
       this.extractedInvoiceJson.taxAmount =
-        Math.round((this.extractedInvoiceJson.subtotal * (this.extractedInvoiceJson.taxRate / 100)) * 100) / 100;
+        Math.round((this.extractedInvoiceJson.subtotal * (rate / 100)) * 100) / 100;
     }
 
-    const grand = this.extractedInvoiceJson.subtotal + (this.extractedInvoiceJson.taxAmount || 0);
+    const grand = this.extractedInvoiceJson.subtotal + (Number(this.extractedInvoiceJson.taxAmount) || 0);
     this.extractedInvoiceJson.grandTotal = Math.round(grand * 100) / 100;
   }
 

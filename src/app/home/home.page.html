@@ -2161,7 +2161,7 @@
                   <!-- Header Info Form Grid -->
                   <div class="invoice-form-section">
                     <h4 class="form-section-title">Invoice Information</h4>
-                    <div class="form-grid-3">
+                    <div class="form-grid-4">
                       <div class="form-field-group">
                         <label class="form-field-label">Vendor Name</label>
                         <input
@@ -2199,6 +2199,26 @@
                           class="form-field-input"
                           [(ngModel)]="extractedInvoiceJson.dueDate"
                           placeholder="YYYY-MM-DD"
+                        />
+                      </div>
+
+                      <div class="form-field-group">
+                        <label class="form-field-label">PO Number</label>
+                        <input
+                          type="text"
+                          class="form-field-input"
+                          [(ngModel)]="extractedInvoiceJson.poNumber"
+                          placeholder="e.g. PO-2026-001"
+                        />
+                      </div>
+
+                      <div class="form-field-group">
+                        <label class="form-field-label">Payment Terms</label>
+                        <input
+                          type="text"
+                          class="form-field-input"
+                          [(ngModel)]="extractedInvoiceJson.paymentTerms"
+                          placeholder="e.g. Net 30, Due on Receipt"
                         />
                       </div>
 
@@ -2247,7 +2267,8 @@
                       <table class="line-items-table">
                         <thead>
                           <tr>
-                            <th style="width: 44px">#</th>
+                            <th style="width: 42px">#</th>
+                            <th style="width: 140px">Item Code / SKU</th>
                             <th>Description</th>
                             <th style="width: 78px" class="col-right">Qty</th>
                             <th style="width: 104px" class="col-right">Unit Price</th>
@@ -2263,6 +2284,14 @@
                           ) {
                             <tr>
                               <td class="col-center text-muted">{{ item.itemNo }}</td>
+                              <td>
+                                <input
+                                  type="text"
+                                  class="tbl-input"
+                                  [(ngModel)]="item.itemCode"
+                                  placeholder="Code / SKU"
+                                />
+                              </td>
                               <td>
                                 <input
                                   type="text"
@@ -2358,7 +2387,7 @@
                             step="0.01"
                             class="total-input"
                             [(ngModel)]="extractedInvoiceJson.subtotal"
-                            (input)="recalculateGrandTotal()"
+                            (input)="onSubtotalChange()"
                           />
                         </div>
                       </div>
@@ -2371,7 +2400,8 @@
                             step="0.1"
                             class="total-input"
                             [(ngModel)]="extractedInvoiceJson.taxRate"
-                            (input)="recalculateGrandTotal()"
+                            (input)="onTaxRateChange()"
+                            placeholder="0"
                           />
                           <span class="currency-suffix">%</span>
                         </div>
@@ -2388,17 +2418,27 @@
                             step="0.01"
                             class="total-input"
                             [(ngModel)]="extractedInvoiceJson.taxAmount"
-                            (input)="recalculateGrandTotal()"
+                            (input)="onTaxAmountChange()"
+                            placeholder="0.00"
                           />
                         </div>
                       </div>
 
                       <div class="total-row grand-total-row">
                         <span class="grand-total-label">Grand Total</span>
-                        <span class="grand-total-amount">
-                          {{ extractedInvoiceJson.currency }}
-                          {{ extractedInvoiceJson.grandTotal | number: '1.2-2' }}
-                        </span>
+                        <div class="total-input-wrap">
+                          <span class="currency-prefix grand-currency-prefix">{{
+                            extractedInvoiceJson.currency
+                          }}</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            class="total-input grand-total-input"
+                            [(ngModel)]="extractedInvoiceJson.grandTotal"
+                            (input)="onGrandTotalChange()"
+                            placeholder="0.00"
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>

@@ -4139,12 +4139,17 @@
           }
         }
 
-        .form-grid-3 {
+        .form-grid-3,
+        .form-grid-4 {
           display: grid;
-          grid-template-columns: repeat(3, 1fr);
+          grid-template-columns: repeat(4, 1fr);
           gap: 12px 14px;
 
-          @media (max-width: 680px) {
+          @media (max-width: 960px) {
+            grid-template-columns: repeat(2, 1fr);
+          }
+
+          @media (max-width: 580px) {
             grid-template-columns: 1fr;
           }
 
@@ -4407,26 +4412,35 @@
               }
 
               .total-input {
-                width: 86px;
-                padding: 4px 6px;
-                font-size: 13px;
-                font-weight: 600;
+                width: 92px;
+                padding: 5px 8px;
+                font-size: 13.5px;
+                font-weight: 700;
                 text-align: right;
-                border: 1px solid #cbd5e1;
+                border: 1.5px solid #cbd5e1;
                 border-radius: 6px;
+                background: #ffffff;
+                color: #0f172a;
                 box-sizing: border-box;
+                transition: all 0.15s ease;
+
+                &:hover {
+                  border-color: #94a3b8;
+                }
 
                 &:focus {
                   outline: none;
                   border-color: #ec1f28;
+                  box-shadow: 0 0 0 2px rgba(236, 31, 40, 0.15);
+                  background: #ffffff;
                 }
               }
             }
 
             &.grand-total-row {
               border-top: 1.5px solid #e2e8f0;
-              padding-top: 8px;
-              margin-top: 4px;
+              padding-top: 10px;
+              margin-top: 6px;
 
               .grand-total-label {
                 font-size: 15px;
@@ -4434,11 +4448,35 @@
                 color: #0f172a;
               }
 
-              .grand-total-amount {
-                font-size: 18px;
+              .grand-currency-prefix {
+                font-size: 14px;
+                font-weight: 700;
+                color: #ec1f28;
+              }
+
+              .grand-total-input {
+                width: 110px;
+                padding: 6px 10px;
+                font-size: 16px;
                 font-weight: 800;
                 color: #ec1f28;
-                letter-spacing: -0.3px;
+                border: 1.5px solid #ec1f28;
+                border-radius: 7px;
+                background: #fff5f5;
+                text-align: right;
+                box-sizing: border-box;
+                transition: all 0.15s ease;
+
+                &:hover {
+                  border-color: #d9141d;
+                }
+
+                &:focus {
+                  outline: none;
+                  border-color: #d9141d;
+                  box-shadow: 0 0 0 3px rgba(236, 31, 40, 0.2);
+                  background: #ffffff;
+                }
               }
             }
           }
