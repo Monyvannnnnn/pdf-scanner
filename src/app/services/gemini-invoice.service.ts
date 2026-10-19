@@ -7,10 +7,27 @@ import { APInvoiceJSON } from '../home/home.page';
   providedIn: 'root'
 })
 export class GeminiInvoiceService {
-  // Initialize with your Gemini API key (loaded from environments/environment.ts)
-  private ai = new GoogleGenAI({
-    apiKey: environment.geminiApiKey || 'AQ.Ab8RN6KCE2IJMXyW-jZayYB_yatkKxGXWQt7VvGPpCiFxjBWNA'
-  });
+  public getApiKey(): string {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('GEMINI_API_KEY') || localStorage.getItem('gemini_api_key');
+      if (stored && stored.trim().length > 0) return stored.trim();
+    }
+    return (environment.geminiApiKey || '').trim();
+  }
+
+  public setApiKey(key: string): void {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('GEMINI_API_KEY', key.trim());
+    }
+  }
+
+  private getClient(): GoogleGenAI {
+    const key = this.getApiKey();
+    if (!key) {
+      throw new Error('Gemini API key is not configured.');
+    }
+    return new GoogleGenAI({ apiKey: key });
+  }
 
   async extractInvoiceFromImageOrPdf(fileOrDataUrl: File | string): Promise<APInvoiceJSON> {
     let base64Data: string;
@@ -70,9 +87,10 @@ export class GeminiInvoiceService {
       required: ["grandTotal", "invoiceNumber"]
     };
 
-    // Call Gemini 2.5 Flash for high-speed, accurate multilingual (English/Khmer) vision extraction
-    const response = await this.ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+    // Call Gemini 2.0 Flash for high-speed, accurate multilingual (English/Khmer) vision extraction
+    const ai = this.getClient();
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.0-flash',
       contents: [
         {
           inlineData: {

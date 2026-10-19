@@ -1802,8 +1802,8 @@ export class HomePage implements OnInit, OnDestroy {
       convertedDigitsText.match(/(?:invoice\s*(?:no|number|#)?|លេខវិក្កយបត្រ)\s*[:៖.#-]?\s*([A-Za-z0-9-]+)/i);
 
     const poMatch =
-      cleanedText.match(/(?:p\.?o\.?\s*(?:no|#)?|po\s*number|purchase\s*order|លេខបញ្ជាទិញ)\s*[:៖.#-]?\s*([A-Za-z0-9-]+)/i) ||
-      convertedDigitsText.match(/(?:p\.?o\.?\s*(?:no|#)?|លេខបញ្ជាទិញ)\s*[:៖.#-]?\s*([A-Za-z0-9-]+)/i);
+      cleanedText.match(/(?:\b(?:p\.?o\.?\s*(?:no|#)?|po\s*number|purchase\s*order)\b|លេខបញ្ជាទិញ)\s*[:៖.#-]?\s*([A-Za-z0-9-]+)/i) ||
+      convertedDigitsText.match(/(?:\b(?:p\.?o\.?\s*(?:no|#)?)\b|លេខបញ្ជាទិញ)\s*[:៖.#-]?\s*([A-Za-z0-9-]+)/i);
 
     const dateMatch =
       cleanedText.match(/(?:invoice\s*date|issue\s*date|dated|កាលបរិច្ឆេទ|ថ្ងៃទី)\s*[:៖.-]?\s*([0-9]{1,2}\s+[A-Za-z]{3,9}\s+[0-9]{4}|\d{1,4}[\/.-]\d{1,2}[\/.-]\d{1,4})/i) ||
@@ -1883,23 +1883,25 @@ export class HomePage implements OnInit, OnDestroy {
       }
     }
 
-    // Line Items Extraction (Supports both Item Qty Price Total and Item Price Qty Total)
+    // Line Items Extraction (Comprehensive patterns: 3-num, 2-num, and 1-num item rows)
     const items: APInvoiceLineItem[] = [];
-    const regex1 = /^(?:\d+\s+)?(.+?)\s+([\d,.]+)\s+[$៛]?([\d,.]+)\s+[$៛]?([\d,.]+)$/;
-    const regex2 = /^(?:\d+\s+)?(.+?)\s+[$៛]?([\d,.]+)\s+([\d,.]+)\s+[$៛]?([\d,.]+)$/;
+    const regex3_1 = /^(?:\d+\s+)?(.+?)\s+([\d,.]+)\s+[$៛]?([\d,.]+)\s+[$៛]?([\d,.]+)$/;
+    const regex3_2 = /^(?:\d+\s+)?(.+?)\s+[$៛]?([\d,.]+)\s+([\d,.]+)\s+[$៛]?([\d,.]+)$/;
     const itemRegexUser = /^(.+?)\s+[$៛]?([\d,.]+)\s+(\d+)\s+[$៛]?([\d,.]+)$/;
+    // 2-number pattern: [Description] [Qty] [Total] OR [Description] [Price] [Total]
+    const regex2_num = /^(?:\d+\s+)?([A-Za-z\u1780-\u17FF\s&()./_-]{2,})\s+(\d+)\s+[$៛]?([\d,.]+)$/;
+    // 1-number pattern: [Description] [Total]
+    const regex1_num = /^(?:\d+\s+)?([A-Za-z\u1780-\u17FF\s&()./_-]{3,})\s+[$៛]?([\d,.]+)$/;
 
     for (const rawLine of lines) {
-      if (/^(#|item|description|sub\s*total|total|tax|terms|balance|thanks|bill\s*to|ship\s*to)/i.test(rawLine)) continue;
-      const match =
-        rawLine.match(regex1) ||
-        rawLine.match(regex2) ||
-        rawLine.match(itemRegexUser) ||
-        (this.convertKhmerNumerals ? this.convertKhmerNumerals(rawLine).match(regex1) : null);
-      if (match) {
-        const v1 = parseFloat(match[2].replace(/,/g, ''));
-        const v2 = parseFloat(match[3].replace(/,/g, ''));
-        const v3 = match[4] ? parseFloat(match[4].replace(/,/g, '')) : (v1 * v2);
+      if (/^(#|item|description|sub\s*total|total|tax|vat|terms|balance|thanks|bill\s*to|ship\s*to|invoice|due|date|phone|email)/i.test(rawLine)) continue;
+
+      // 1. Try 3 numbers pattern (Qty, Price, Total)
+      const match3 = rawLine.match(regex3_1) || rawLine.match(regex3_2) || rawLine.match(itemRegexUser);
+      if (match3) {
+        const v1 = parseFloat(match3[2].replace(/,/g, ''));
+        const v2 = parseFloat(match3[3].replace(/,/g, ''));
+        const v3 = match3[4] ? parseFloat(match3[4].replace(/,/g, '')) : (v1 * v2);
         let qty = 1, unitPrice = v2;
         if (Math.abs(v1 * v2 - v3) < 0.05) {
           qty = v1; unitPrice = v2;
@@ -1910,12 +1912,68 @@ export class HomePage implements OnInit, OnDestroy {
         }
         items.push({
           itemNo: items.length + 1,
-          description: match[1].trim(),
+          description: match3[1].trim(),
           quantity: qty,
           unitPrice: unitPrice,
           total: v3,
         });
+        continue;
       }
+
+      // 2. Try 2 numbers pattern: Description, Qty, Total
+      const match2 = rawLine.match(regex2_num);
+      if (match2) {
+        const qty = parseInt(match2[2], 10) || 1;
+        const total = parseFloat(match2[3].replace(/,/g, '')) || 0;
+        if (total > 0 && total !== subtotal && total !== grandTotal) {
+          items.push({
+            itemNo: items.length + 1,
+            description: match2[1].trim(),
+            quantity: qty,
+            unitPrice: Math.round((total / qty) * 100) / 100,
+            total: total,
+          });
+          continue;
+        }
+      }
+
+      // 3. Try 1 number pattern: Description, Total
+      const match1 = rawLine.match(regex1_num);
+      if (match1) {
+        const amount = parseFloat(match1[2].replace(/,/g, '')) || 0;
+        const desc = match1[1].trim();
+        // Ignore headers or metadata lines
+        if (amount > 0 && desc.length > 2 && !/(invoice|total|balance|due|tax|vat|subtotal|rate|phone|date|po\s*box|zip)/i.test(desc)) {
+          if (amount === subtotal && items.length > 0) continue;
+          items.push({
+            itemNo: items.length + 1,
+            description: desc,
+            quantity: 1,
+            unitPrice: amount,
+            total: amount,
+          });
+        }
+      }
+    }
+
+    // Safety fallback: If table lines were not matched as discrete rows but subtotal > 0
+    if (items.length === 0 && (subtotal > 0 || grandTotal > 0)) {
+      const fallbackAmount = subtotal > 0 ? subtotal : grandTotal;
+      // Search lines for likely item description
+      let bestDesc = '';
+      for (const l of lines) {
+        if (!/(invoice|bill\s*to|ship\s*to|total|subtotal|tax|due|date|phone|email|terms|thanks|balance|po\b)/i.test(l) && l.length > 4) {
+          bestDesc = l.replace(/^[\d\s.#-]+/, '').trim();
+          break;
+        }
+      }
+      items.push({
+        itemNo: 1,
+        description: bestDesc || 'General Services / Invoice Items',
+        quantity: 1,
+        unitPrice: fallbackAmount,
+        total: fallbackAmount,
+      });
     }
 
     // Notes & Terms & Conditions
@@ -2233,16 +2291,34 @@ export class HomePage implements OnInit, OnDestroy {
       return `${y}-${m}-${d}`;
     }
 
-    // Format: YYYY-MM-DD or YYYY/MM/DD
+    // Format: YYYY-MM-DD or YYYY/MM/DD or YYYY-DD-MM
     const isoMatch = clean.match(/(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})/);
     if (isoMatch) {
-      return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
+      const year = isoMatch[1];
+      const p1 = parseInt(isoMatch[2], 10);
+      const p2 = parseInt(isoMatch[3], 10);
+      let month = p1;
+      let day = p2;
+      if (p1 > 12 && p2 <= 12) {
+        month = p2;
+        day = p1;
+      }
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     }
 
-    // Format: DD/MM/YYYY or DD-MM-YYYY
+    // Format: DD/MM/YYYY or MM/DD/YYYY
     const dmyMatch = clean.match(/(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/);
     if (dmyMatch) {
-      return `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`;
+      const year = dmyMatch[3];
+      const p1 = parseInt(dmyMatch[1], 10);
+      const p2 = parseInt(dmyMatch[2], 10);
+      let day = p1;
+      let month = p2;
+      if (p2 > 12 && p1 <= 12) {
+        month = p1;
+        day = p2;
+      }
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     }
 
     const parsed = Date.parse(clean);
