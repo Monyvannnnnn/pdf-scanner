@@ -50,21 +50,43 @@ export class GeminiInvoiceService {
       type: Type.OBJECT,
       properties: {
         documentType: { type: Type.STRING, enum: ['AP_INVOICE'] },
-        currency: { type: Type.STRING, description: "e.g. USD, KHR" },
+        currency: { type: Type.STRING, description: "e.g. USD, KHR, GBP, EUR" },
         vendor: {
           type: Type.OBJECT,
           properties: {
-            name: { type: Type.STRING },
+            name: { type: Type.STRING, description: "Vendor, supplier, or seller company name" },
             phone: { type: Type.STRING },
-            taxId: { type: Type.STRING }
+            taxId: { type: Type.STRING },
+            street: { type: Type.STRING }
+          }
+        },
+        billTo: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING, description: "Billed to, customer, client, or recipient name" },
+            phone: { type: Type.STRING },
+            street: { type: Type.STRING }
           }
         },
         invoiceNumber: { type: Type.STRING },
         invoiceDate: { type: Type.STRING, description: "YYYY-MM-DD format" },
         dueDate: { type: Type.STRING, description: "YYYY-MM-DD format" },
+        poNumber: { type: Type.STRING, description: "Purchase Order # / PO #" },
+        paymentTerms: { type: Type.STRING, description: "e.g. Due on Receipt, Net 30, COD" },
         subtotal: { type: Type.NUMBER },
+        taxRate: { type: Type.NUMBER, description: "Tax / VAT percentage (e.g. 5, 10)" },
         taxAmount: { type: Type.NUMBER },
+        discountTotal: { type: Type.NUMBER },
         grandTotal: { type: Type.NUMBER },
+        bankDetails: {
+          type: Type.OBJECT,
+          properties: {
+            bankName: { type: Type.STRING },
+            accountName: { type: Type.STRING },
+            accountNumber: { type: Type.STRING }
+          }
+        },
+        notes: { type: Type.STRING },
         items: {
           type: Type.ARRAY,
           items: {
@@ -87,10 +109,10 @@ export class GeminiInvoiceService {
       required: ["grandTotal", "invoiceNumber"]
     };
 
-    // Call Gemini 2.0 Flash for high-speed, accurate multilingual (English/Khmer) vision extraction
+    // Call Gemini 2.5 Flash for high-speed, accurate multilingual (English/Khmer) vision extraction
     const ai = this.getClient();
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.5-flash',
       contents: [
         {
           inlineData: {
@@ -98,7 +120,7 @@ export class GeminiInvoiceService {
             mimeType: mimeType
           }
         },
-        'Accurately extract all AP invoice details into the requested JSON schema. In rawOcrText, provide the full, verbatim line-by-line transcription of all text visible on the document separated with clean line breaks (\n). Preserve Khmer and English characters where present, normalize dates to YYYY-MM-DD, and ensure math fields match.'
+        'Accurately extract all AP invoice details into the requested JSON schema. In rawOcrText, provide the full, verbatim line-by-line transcription of all text visible on the document separated with clean line breaks (\n). Preserve Khmer and English characters where present, normalize dates to YYYY-MM-DD, extract Billed To customer name, tax rate %, and ensure math fields match.'
       ],
       config: {
         responseMimeType: 'application/json',
@@ -111,7 +133,13 @@ export class GeminiInvoiceService {
 
     // Fallback compatibility bindings
     parsedJson.documentType = 'AP_INVOICE';
-    parsedJson.vendorName = parsedJson.vendor?.name;
+    parsedJson.vendorName = parsedJson.vendor?.name || parsedJson.vendorName || '';
+    parsedJson.billedTo = parsedJson.billTo?.name || parsedJson.billedTo || '';
+
+    // Auto-calculate taxRate if missing
+    if (parsedJson.subtotal && parsedJson.taxAmount && !parsedJson.taxRate) {
+      parsedJson.taxRate = Math.round((parsedJson.taxAmount / parsedJson.subtotal) * 100);
+    }
 
     // Ensure rawOcrText contains real transcribed document lines
     if (!parsedJson.rawOcrText || parsedJson.rawOcrText.trim().length === 0) {
