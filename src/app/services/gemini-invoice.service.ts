@@ -58,7 +58,9 @@ export class GeminiInvoiceService {
 
   async extractInvoiceFromImageOrPdf(
     fileOrDataUrl: File | string,
+    onProgress?: (step: string, percent: number) => void,
   ): Promise<APInvoiceJSON> {
+    onProgress?.('Preparing document for AI Vision...', 15);
     let base64Data: string;
     let mimeType = 'image/jpeg';
 
@@ -135,21 +137,28 @@ export class GeminiInvoiceService {
       required: ['grandTotal', 'invoiceNumber'],
     };
 
-    // Try available models in order of capability, falling back automatically if one hits a 429 rate limit or quota cap
+    // Candidate models ordered by speed & availability for vision extraction:
+    // 1. gemini-3.5-flash (fastest ~2.3s, active quota)
+    // 2. gemini-3.5-flash-lite (fast ~2.0s)
+    // 3. gemini-3.8-flash (fallback)
     const candidateModels = [
-      'gemini-3.8-flash',
       'gemini-3.5-flash',
-      'gemini-flash-latest',
       'gemini-3.5-flash-lite',
+      'gemini-3.8-flash',
     ];
 
     const ai = this.getClient();
     let response: any = null;
     let lastError: any = null;
 
-    for (const model of candidateModels) {
+    for (let i = 0; i < candidateModels.length; i++) {
+      const model = candidateModels[i];
+      const modelDisplayName = model.replace('gemini-', 'Gemini ').replace('-', ' ');
+      const progressPct = 30 + i * 20;
+      onProgress?.(`Extracting with ${modelDisplayName}...`, progressPct);
+
       try {
-        response = await ai.models.generateContent({
+        const apiCall = ai.models.generateContent({
           model,
           contents: [
             {
@@ -167,26 +176,24 @@ export class GeminiInvoiceService {
           },
         });
 
+        // 12s timeout per candidate model so it never hangs indefinitely
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`Timeout: ${model} exceeded 12s`)), 12000),
+        );
+
+        response = await Promise.race([apiCall, timeoutPromise]);
+
         if (response?.text) {
+          onProgress?.('Parsing extracted invoice data...', 90);
           break; // successfully extracted
         }
       } catch (err: any) {
         lastError = err;
         const errMsg = String(err?.message || err || '');
-        const isQuotaOrUnavailable =
-          errMsg.includes('429') ||
-          errMsg.includes('RESOURCE_EXHAUSTED') ||
-          errMsg.includes('quota') ||
-          errMsg.includes('404') ||
-          errMsg.includes('503');
-
-        if (isQuotaOrUnavailable) {
-          console.warn(
-            `[GeminiInvoiceService] Model ${model} quota reached or unavailable. Falling back to next candidate model...`,
-          );
-          continue;
-        }
-        throw err;
+        console.warn(
+          `[GeminiInvoiceService] Model ${model} issue (${errMsg}). Switching to next model...`,
+        );
+        continue;
       }
     }
 
@@ -194,7 +201,7 @@ export class GeminiInvoiceService {
       throw (
         lastError ||
         new Error(
-          'Gemini AI extraction quota exceeded on all available models. Please provide a custom Gemini API key or try again later.',
+          'Gemini AI extraction unavailable or timed out. Falling back to on-device OCR...',
         )
       );
     }

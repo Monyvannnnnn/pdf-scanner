@@ -1630,31 +1630,63 @@ export class HomePage implements OnInit, OnDestroy {
   }
 
   /**
-   * Run Gemini 2.5 Flash Multimodal Vision Extraction on active processed document canvas
+   * Run Gemini Multimodal Vision Extraction on active processed document canvas
    */
   async runGeminiAiExtraction(
     activePageDataUrl: string,
     preserveActiveTab = false
   ): Promise<APInvoiceJSON | null> {
+    let progressTimer: any = null;
+    const currentTab = this.activeApTab;
+
     try {
-      const currentTab = this.activeApTab;
       this.ngZone.run(() => {
         this.isExtractingApInvoice = true;
         this.isOcrRunning = true;
-        this.ocrProgress = 20;
-        this.ocrStatusText = 'Analyzing document with Gemini Vision AI...';
+        this.ocrProgress = 15;
+        this.ocrStatusText = 'Connecting to Gemini Vision AI...';
         this.showInvoiceJsonModal = true;
         this.showApInvoiceModal = true;
         if (!preserveActiveTab) {
-          this.activeInvoiceTab = 'json';
-          this.activeApTab = 'json';
+          this.activeInvoiceTab = 'form';
+          this.activeApTab = 'form';
         }
         this.cdr.detectChanges();
       });
 
+      // Smooth simulated progress increments while waiting for model response
+      let currentPct = 15;
+      progressTimer = setInterval(() => {
+        this.ngZone.run(() => {
+          if (currentPct < 85) {
+            currentPct += Math.floor(Math.random() * 6) + 3;
+            this.ocrProgress = Math.min(85, currentPct);
+            if (this.ocrProgress > 65) {
+              this.ocrStatusText = 'Extracting invoice line items, tax & totals...';
+            } else if (this.ocrProgress > 40) {
+              this.ocrStatusText = 'Analyzing document layout & visual text...';
+            }
+            this.cdr.detectChanges();
+          }
+        });
+      }, 350);
+
       // 1. Send active processed page canvas snapshot directly to Gemini Vision
       const extractedInvoiceJson =
-        await this.geminiInvoiceService.extractInvoiceFromImageOrPdf(activePageDataUrl);
+        await this.geminiInvoiceService.extractInvoiceFromImageOrPdf(
+          activePageDataUrl,
+          (step: string, pct: number) => {
+            this.ngZone.run(() => {
+              this.ocrStatusText = step;
+              if (pct > this.ocrProgress) {
+                this.ocrProgress = pct;
+              }
+              this.cdr.detectChanges();
+            });
+          },
+        );
+
+      if (progressTimer) clearInterval(progressTimer);
 
       // 2. Update UI state inside NgZone to trigger the 3-Tab Glass Review Modal
       this.ngZone.run(() => {
@@ -1669,22 +1701,37 @@ export class HomePage implements OnInit, OnDestroy {
         this.isOcrRunning = false;
         this.isApModalOpen = true; // Opens your FieldBi 3-Tab Glass Review Modal
         this.showInvoiceJsonModal = true;
-        if (preserveActiveTab) {
-          this.activeApTab = currentTab;
-          this.activeInvoiceTab = currentTab;
-        }
+        this.activeApTab = 'form';
+        this.activeInvoiceTab = 'form';
         this.cdr.detectChanges();
       });
 
       return extractedInvoiceJson;
-    } catch (error) {
-      console.error('Gemini AI Extraction failed:', error);
+    } catch (error: any) {
+      if (progressTimer) clearInterval(progressTimer);
+      console.warn('Gemini AI Extraction noticed:', error?.message || error);
       this.ngZone.run(() => {
-        this.ocrStatusText = 'Gemini offline or error, falling back to on-device OCR...';
+        this.ocrProgress = 50;
+        this.ocrStatusText = 'Gemini AI busy, falling back to local OCR engine...';
         this.cdr.detectChanges();
       });
       return null;
     }
+  }
+
+  /**
+   * Allows the user to cancel an in-progress extraction anytime
+   */
+  cancelExtraction(): void {
+    this.ngZone.run(() => {
+      this.isExtractingApInvoice = false;
+      this.isOcrRunning = false;
+      this.ocrProgress = 0;
+      this.ocrStatusText = '';
+      this.showApInvoiceModal = false;
+      this.showInvoiceJsonModal = false;
+      this.cdr.detectChanges();
+    });
   }
 
   /**

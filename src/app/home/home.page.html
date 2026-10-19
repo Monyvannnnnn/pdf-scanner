@@ -2010,7 +2010,29 @@
         <div class="invoice-modal-body">
           @if (isExtractingInvoice || isOcrRunning) {
             <div class="invoice-extracting-state">
-              <div class="extracting-spinner"></div>
+              <div class="extracting-spinner-wrap">
+                <div class="extracting-halo"></div>
+                <div class="extracting-spinner"></div>
+                <svg
+                  class="extracting-ai-icon"
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#ec1f28"
+                  stroke-width="2.5"
+                >
+                  <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
+                </svg>
+              </div>
+
+              <h4 class="extracting-title">
+                {{ ocrProgress === 100 ? 'Finalizing Invoice Data...' : 'AI Vision Extraction in Progress' }}
+              </h4>
+
+              <p class="extracting-desc">
+                {{ ocrStatusText || 'Analyzing document with Gemini Vision AI...' }}
+              </p>
 
               <div class="extracting-progress-track">
                 <div
@@ -2019,6 +2041,28 @@
                 ></div>
               </div>
               <span class="ocr-progress-percent">{{ ocrProgress }}%</span>
+
+              <div class="extracting-steps-row">
+                <span class="step-pill" [class.active]="ocrProgress >= 15">
+                  1. Scan Image
+                </span>
+                <span class="step-arrow">→</span>
+                <span class="step-pill" [class.active]="ocrProgress >= 50">
+                  2. Extract Fields
+                </span>
+                <span class="step-arrow">→</span>
+                <span class="step-pill" [class.active]="ocrProgress >= 85">
+                  3. Format & Verify
+                </span>
+              </div>
+
+              <button
+                type="button"
+                class="btn-cancel-extract"
+                (click)="cancelExtraction()"
+              >
+                Cancel Extraction
+              </button>
             </div>
           } @else if (ocrError) {
             <div class="ocr-error-box">
