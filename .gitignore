@@ -12,6 +12,13 @@ $RECYCLE.BIN/
 *.log
 log.txt
 
+# Environment files
+.env
+.env.local
+.env.*.local
+!.env.example
+!.env.sample
+
 
 /.sourcemaps
 /.versions
@@ -30,9 +37,21 @@ log.txt
 /bazel-out
 
 # Node
-/node_modules
+node_modules/
 npm-debug.log
 yarn-error.log
+
+# Databases & Local state
+*.db
+*.sqlite
+*.sqlite3
+*.traineddata
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
 
 # IDEs and editors
 .idea/

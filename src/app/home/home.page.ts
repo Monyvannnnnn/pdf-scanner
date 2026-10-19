@@ -1,17 +1,22 @@
 import {
+  ChangeDetectorRef,
   Component,
   ElementRef,
   HostListener,
+  NgZone,
   OnDestroy,
   OnInit,
   ViewChild,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { IonContent } from '@ionic/angular';
 import { PDFDocument, PDFName } from 'pdf-lib';
 import { createWorker } from 'tesseract.js';
 import JSZip from 'jszip';
 import { Capacitor } from '@capacitor/core';
+import { SupabaseService } from '../services/supabase.service';
+import { GeminiInvoiceService } from '../services/gemini-invoice.service';
 
 export type FilterType =
   'original' | 'enhance' | 'magic' | 'lighten' | 'noShadow' | 'bw';
@@ -57,12 +62,81 @@ export interface SavedDocumentSession {
   thumbnail: string;
 }
 
+export interface APInvoiceAddress {
+  name?: string;
+  street?: string;
+  city?: string;
+  postalCode?: string;
+  country?: string;
+  phone?: string;
+  email?: string;
+  taxId?: string; // VAT / TIN number
+}
+
+export interface APInvoiceLineItem {
+  itemNo: number;
+  itemCode?: string; // SKU or Item #
+  description: string;
+  quantity: number;
+  unitOfMeasure?: string; // pcs, hours, kg, etc.
+  unitPrice: number;
+  discount?: number;
+  taxRate?: number;
+  total: number;
+}
+
+export interface APInvoiceJSON {
+  documentType: 'AP_INVOICE';
+  currency: string;
+
+  // 1. Vendor (Supplier) Info
+  vendor: APInvoiceAddress;
+
+  // 2. Customer / Bill-To & Ship-To Info
+  billTo: APInvoiceAddress;
+  shipTo?: APInvoiceAddress;
+
+  // 3. Invoice Header Details
+  invoiceNumber: string;
+  invoiceDate: string; // YYYY-MM-DD
+  dueDate: string; // YYYY-MM-DD
+  poNumber?: string; // Purchase Order # (P.O.#)
+  paymentTerms?: string; // e.g., "Net 30", "Due on Receipt"
+
+  // 4. Line Items Table
+  items: APInvoiceLineItem[];
+
+  // 5. Financial Summary / Totals
+  subtotal: number;
+  discountTotal?: number;
+  shippingCost?: number;
+  taxRate?: number;
+  taxAmount: number;
+  grandTotal: number;
+  balanceDue?: number;
+
+  // 6. Footer & Payment Instructions
+  bankDetails?: {
+    bankName?: string;
+    accountName?: string;
+    accountNumber?: string;
+    swiftOrRouting?: string;
+  };
+  notes?: string;
+  termsAndConditions?: string;
+  rawOcrText?: string;
+
+  // Legacy flat fields for template bindings
+  vendorName?: string;
+  billedTo?: string;
+}
+
 @Component({
   selector: 'app-home',
   templateUrl: 'home.page.html',
   styleUrls: ['home.page.scss'],
   standalone: true,
-  imports: [CommonModule, IonContent],
+  imports: [CommonModule, IonContent, FormsModule],
 })
 export class HomePage implements OnInit, OnDestroy {
   @ViewChild('cropOverlayRef') cropOverlayRef?: ElementRef<HTMLDivElement>;
@@ -145,7 +219,7 @@ export class HomePage implements OnInit, OnDestroy {
   showConfirmDialog = false;
   confirmDialogTitle = '';
   confirmDialogMessage = '';
-  confirmDialogType: 'warning' | 'delete' | 'reset' = 'reset';
+  confirmDialogType: 'warning' | 'delete' | 'reset' | 'success' = 'reset';
   confirmDialogActionText = 'Confirm';
   confirmDialogCancelText = 'Cancel';
   private confirmActionCallback: (() => void) | null = null;
@@ -164,6 +238,59 @@ export class HomePage implements OnInit, OnDestroy {
   ocrLanguage = 'khm+eng';
   private ocrWorkerInstance: any = null;
   private ocrWorkerCurrentLang = '';
+
+  // --- AP Invoice Extraction State ---
+  isExtractingApInvoice = false;
+  showApInvoiceModal = false;
+  activeApTab: 'json' | 'form' | 'raw' = 'json';
+  extractedApInvoice: any = null;
+  isSubmittingApInvoice = false;
+
+  // Compatibility accessors for template & internal bindings
+  get isExtractingInvoice(): boolean {
+    return this.isExtractingApInvoice;
+  }
+  set isExtractingInvoice(val: boolean) {
+    this.isExtractingApInvoice = val;
+  }
+
+  get showInvoiceJsonModal(): boolean {
+    return this.showApInvoiceModal;
+  }
+  set showInvoiceJsonModal(val: boolean) {
+    this.showApInvoiceModal = val;
+  }
+
+  get activeInvoiceTab(): 'json' | 'form' | 'raw' {
+    return this.activeApTab;
+  }
+  set activeInvoiceTab(val: 'json' | 'form' | 'raw') {
+    this.activeApTab = val;
+  }
+
+  get extractedInvoiceJson(): any {
+    return this.extractedApInvoice;
+  }
+  set extractedInvoiceJson(val: any) {
+    this.extractedApInvoice = val;
+  }
+
+  get currentApInvoice(): any {
+    return this.extractedApInvoice;
+  }
+  set currentApInvoice(val: any) {
+    this.extractedApInvoice = val;
+  }
+
+  get isApModalOpen(): boolean {
+    return this.showApInvoiceModal;
+  }
+  set isApModalOpen(val: boolean) {
+    this.showApInvoiceModal = val;
+  }
+
+  copiedInvoiceJson = false;
+  backendApiUrl = 'http://localhost:3000/api/ap-invoices';
 
   // Scan with Phone QR Modal State
   showQrModal = false;
@@ -252,6 +379,13 @@ export class HomePage implements OnInit, OnDestroy {
 
     return { t1, t2, b1, b2, l1, l2, r1, r2 };
   }
+
+  constructor(
+    private cdr: ChangeDetectorRef,
+    private ngZone: NgZone,
+    public geminiInvoiceService: GeminiInvoiceService,
+    public supabaseService: SupabaseService,
+  ) {}
 
   async ngOnInit() {
     // Listen to all scroll events anywhere in the viewport (including ion-content and body)
@@ -928,7 +1062,13 @@ export class HomePage implements OnInit, OnDestroy {
         p.flipH,
         p.filter,
       );
+      if (p.id === this.activePage.id && this.paperImageRef?.nativeElement) {
+        this.paperImageRef.nativeElement.src = p.displayDataUrl;
+        this.paperImageRef.nativeElement.style.transform = '';
+      }
     }
+    this.cdr.detectChanges();
+    this.queueAutoSave();
   }
 
   async adjustStraightenAngle(delta: number) {
@@ -936,11 +1076,27 @@ export class HomePage implements OnInit, OnDestroy {
     await this.setStraightenAngle(this.activePage.straightenAngle + delta);
   }
 
-  onStraightenSliderChange(event: Event) {
+  onStraightenSliderInput(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const val = parseFloat(input.value);
+    if (isNaN(val) || !this.activePage) return;
+
+    this.activePage.straightenAngle = val;
+    // Real-time CSS transform so slider drag gives buttery-smooth 60fps instant rotation while mouse is held
+    if (this.paperImageRef?.nativeElement) {
+      this.paperImageRef.nativeElement.style.transform = `rotate(${val}deg)`;
+    }
+    this.cdr.detectChanges();
+  }
+
+  async onStraightenSliderChange(event: Event) {
     const input = event.target as HTMLInputElement;
     const val = parseFloat(input.value);
     if (!isNaN(val)) {
-      this.setStraightenAngle(val);
+      if (this.paperImageRef?.nativeElement) {
+        this.paperImageRef.nativeElement.style.transform = '';
+      }
+      await this.setStraightenAngle(val);
     }
   }
 
@@ -955,12 +1111,16 @@ export class HomePage implements OnInit, OnDestroy {
       await this.setStraightenAngle(detectedAngle);
     } finally {
       this.isProcessing = false;
+      this.cdr.detectChanges();
     }
   }
 
   // --- Filter Selection ---
   async setFilter(filter: FilterType) {
     if (!this.activePage) return;
+
+    this.activePage.filter = filter;
+    this.cdr.detectChanges(); // Immediately reflect active button highlight
 
     if (this.applyToAllPages) {
       for (const p of this.pages) {
@@ -972,9 +1132,11 @@ export class HomePage implements OnInit, OnDestroy {
           p.flipH,
           p.filter,
         );
+        if (p.id === this.activePage.id && this.paperImageRef?.nativeElement) {
+          this.paperImageRef.nativeElement.src = p.displayDataUrl;
+        }
       }
     } else {
-      this.activePage.filter = filter;
       this.activePage.displayDataUrl = await this.renderProcessedImage(
         this.activePage.croppedDataUrl,
         this.activePage.rotation,
@@ -982,7 +1144,11 @@ export class HomePage implements OnInit, OnDestroy {
         this.activePage.flipH,
         this.activePage.filter,
       );
+      if (this.paperImageRef?.nativeElement) {
+        this.paperImageRef.nativeElement.src = this.activePage.displayDataUrl;
+      }
     }
+    this.cdr.detectChanges(); // Immediately flush change detection without waiting for mouseleave/mousemove
     this.queueAutoSave();
   }
 
@@ -1058,9 +1224,9 @@ export class HomePage implements OnInit, OnDestroy {
   openConfirmation(
     title: string,
     message: string,
-    actionText: string,
-    onConfirm: () => void,
-    type: 'warning' | 'delete' | 'reset' = 'reset',
+    actionText = 'OK',
+    onConfirm: () => void = () => {},
+    type: 'warning' | 'delete' | 'reset' | 'success' = 'reset',
     cancelText = 'Cancel',
   ) {
     this.confirmDialogTitle = title;
@@ -1124,9 +1290,15 @@ export class HomePage implements OnInit, OnDestroy {
       this.promptUploadFirst('Text Recognition (AI OCR)');
       return;
     }
-    this.showOcrModal = true;
-    this.ocrCopied = false;
-    this.ocrError = null;
+    this.ngZone.run(() => {
+      this.activeInvoiceTab = 'raw';
+      this.showInvoiceJsonModal = true;
+      this.showApInvoiceModal = true;
+      this.showOcrModal = false;
+      this.ocrCopied = false;
+      this.ocrError = null;
+      this.cdr.detectChanges();
+    });
 
     // Automatically trigger OCR if new page or not yet processed
     if (
@@ -1135,7 +1307,10 @@ export class HomePage implements OnInit, OnDestroy {
     ) {
       await this.runOcr();
     } else {
-      this.updateOcrCounts();
+      this.ngZone.run(() => {
+        this.updateOcrCounts();
+        this.cdr.detectChanges();
+      });
     }
   }
 
@@ -1143,6 +1318,7 @@ export class HomePage implements OnInit, OnDestroy {
     if (this.ocrLanguage === lang || this.isOcrRunning) return;
     this.ocrLanguage = lang;
     this.ocrLastProcessedPageId = '';
+    this.cdr.detectChanges();
     await this.runOcr();
   }
 
@@ -1150,16 +1326,20 @@ export class HomePage implements OnInit, OnDestroy {
     const page = this.activePage;
     if (!page) return;
 
-    this.isOcrRunning = true;
-    this.ocrProgress = 0;
-    const langLabel =
-      this.ocrLanguage === 'khm+eng'
-        ? 'Khmer & English'
-        : this.ocrLanguage === 'khm'
-          ? 'Khmer'
-          : 'English';
-    this.ocrStatusText = `Initializing OCR engine (${langLabel})...`;
-    this.ocrError = null;
+    this.ngZone.run(() => {
+      this.isOcrRunning = true;
+      this.isExtractingApInvoice = true;
+      this.ocrProgress = 0;
+      const langLabel =
+        this.ocrLanguage === 'khm+eng'
+          ? 'Khmer & English'
+          : this.ocrLanguage === 'khm'
+            ? 'Khmer'
+            : 'English';
+      this.ocrStatusText = `Initializing OCR engine (${langLabel})...`;
+      this.ocrError = null;
+      this.cdr.detectChanges();
+    });
 
     try {
       // Pass the clean image from the active page viewer directly to Tesseract
@@ -1186,52 +1366,78 @@ export class HomePage implements OnInit, OnDestroy {
               ? this.ocrLanguage.split('+')
               : [this.ocrLanguage];
 
+        const langLabel =
+          this.ocrLanguage === 'khm+eng'
+            ? 'Khmer & English'
+            : this.ocrLanguage === 'khm'
+              ? 'Khmer'
+              : 'English';
+
         this.ocrWorkerInstance = await createWorker(langs, 1, {
           langPath: 'https://tessdata.projectnaptha.com/4.0.0_best',
           logger: (m: any) => {
-            if (m.status === 'recognizing text') {
-              this.ocrProgress = Math.min(
-                100,
-                Math.round((m.progress || 0) * 100),
-              );
-              this.ocrStatusText = `Recognizing text (${this.ocrProgress}%)...`;
-            } else if (m.status === 'loading tesseract core') {
-              this.ocrStatusText = 'Loading OCR Core...';
-            } else if (m.status === 'loading language traineddata') {
-              const pct = Math.round((m.progress || 0) * 100);
-              this.ocrProgress = Math.min(99, pct);
-              this.ocrStatusText =
-                pct > 0
-                  ? `Downloading ${langLabel} model... ${pct}%`
-                  : `Downloading ${langLabel} model...`;
-            } else if (m.status === 'initializing api') {
-              this.ocrStatusText = 'Preparing recognition engine...';
-            } else if (m.status === 'initialized api') {
-              this.ocrProgress = 0;
-              this.ocrStatusText = 'Starting text recognition...';
-            }
+            this.ngZone.run(() => {
+              if (m.status === 'recognizing text') {
+                this.ocrProgress = Math.min(
+                  100,
+                  Math.round((m.progress || 0) * 100),
+                );
+                this.ocrStatusText = `Recognizing text (${this.ocrProgress}%)...`;
+              } else if (m.status === 'loading tesseract core') {
+                this.ocrStatusText = 'Loading OCR Core...';
+              } else if (m.status === 'loading language traineddata') {
+                const pct = Math.round((m.progress || 0) * 100);
+                this.ocrProgress = Math.min(99, pct);
+                this.ocrStatusText =
+                  pct > 0
+                    ? `Downloading ${langLabel} model... ${pct}%`
+                    : `Downloading ${langLabel} model...`;
+              } else if (m.status === 'initializing api') {
+                this.ocrStatusText = 'Preparing recognition engine...';
+              } else if (m.status === 'initialized api') {
+                this.ocrProgress = 0;
+                this.ocrStatusText = 'Starting text recognition...';
+              }
+              this.cdr.detectChanges();
+            });
           },
         });
 
-        // Use standard page segmentation (PSM.AUTO = 3) without sparse text mode
+        // Use PSM 6 (Single uniform block of text) and preserve_interword_spaces
+        // so Khmer + English invoice table rows stay cleanly aligned on the same line
         await this.ocrWorkerInstance.setParameters({
-          tessedit_pageseg_mode: '3',
+          tessedit_pageseg_mode: '6',
           preserve_interword_spaces: '1',
         });
 
         this.ocrWorkerCurrentLang = this.ocrLanguage;
       }
 
-      this.ocrStatusText = 'Analyzing document...';
+      this.ngZone.run(() => {
+        this.ocrStatusText = 'Analyzing document & aligning tables...';
+        this.cdr.detectChanges();
+      });
+
       const ret = await this.ocrWorkerInstance.recognize(cleanImage);
 
-      // Filter out garbage lines and background texture artifacts
-      const filtered = this.filterOcrLines(ret.data);
-      this.ocrExtractedText =
-        filtered ||
-        'No readable text was detected on this page. Try adjusting lighting or re-taking the photo with higher contrast.';
-      this.ocrLastProcessedPageId = page.id;
-      this.updateOcrCounts();
+      this.ngZone.run(() => {
+        // Filter out garbage lines and background texture artifacts
+        const filtered = this.filterOcrLines(ret.data);
+        this.ocrExtractedText =
+          filtered ||
+          ret.data?.text ||
+          'No readable text was detected on this page. Try adjusting lighting or re-taking the photo with higher contrast.';
+        this.ocrLastProcessedPageId = page.id;
+        this.updateOcrCounts();
+        if (this.ocrExtractedText) {
+          const parsed = this.parseFullApInvoice(this.ocrExtractedText);
+          this.extractedInvoiceJson = parsed;
+          this.extractedApInvoice = parsed;
+        }
+        this.isOcrRunning = false;
+        this.isExtractingApInvoice = false;
+        this.cdr.detectChanges();
+      });
     } catch (err: any) {
       console.error('OCR Error:', err);
       try {
@@ -1239,21 +1445,31 @@ export class HomePage implements OnInit, OnDestroy {
       } catch (_) {}
       this.ocrWorkerInstance = null;
       this.ocrWorkerCurrentLang = '';
-      this.ocrError =
-        'Unable to recognize text. Please check your internet connection for language model downloading, or try switching language.';
+      this.ngZone.run(() => {
+        this.ocrError =
+          'Unable to recognize text. Please check your internet connection for language model downloading, or try switching language.';
+        this.isOcrRunning = false;
+        this.isExtractingApInvoice = false;
+        this.cdr.detectChanges();
+      });
     } finally {
-      this.isOcrRunning = false;
+      this.ngZone.run(() => {
+        this.isOcrRunning = false;
+        this.isExtractingApInvoice = false;
+        this.cdr.detectChanges();
+      });
     }
   }
 
   /**
    * Filter out garbage lines and background noise:
-   * 1. Average word confidence on that line below 60
+   * 1. Average word confidence on that line below threshold (35 for Khmer, 55 for English)
    * 2. More than 40% of the characters are symbols/slashes (/, \, #, %, =, ), (, ;, §)
    */
   private filterOcrLines(data: any): string {
     const SYMBOL_PATTERN = /[\/\\#%=\)\(;§]/g;
     const rawLines = data?.lines || [];
+    const isKhmer = (this.ocrLanguage || '').includes('khm');
 
     if (!rawLines.length) {
       const textLines = (data?.text || '').split('\n');
@@ -1276,7 +1492,12 @@ export class HomePage implements OnInit, OnDestroy {
       const lineText = (line.text || '').trim();
       if (!lineText) continue;
 
-      // 1. Average word confidence check (drop lines with average confidence < 60)
+      // 1. Average word confidence check
+      // For Khmer scripts with complex ligatures/subscripts, Tesseract reports lower confidence
+      // (35-50), so we use a more forgiving threshold of 35 when Khmer is involved.
+      const hasKhmerChars = /[\u1780-\u17FF]/.test(lineText);
+      const minConfidence = isKhmer || hasKhmerChars ? 35 : 55;
+
       let avgConfidence = 0;
       if (line.words && line.words.length > 0) {
         const sum = line.words.reduce(
@@ -1291,7 +1512,7 @@ export class HomePage implements OnInit, OnDestroy {
         avgConfidence = 100;
       }
 
-      if (avgConfidence < 60) {
+      if (avgConfidence < minConfidence) {
         continue;
       }
 
@@ -1322,6 +1543,7 @@ export class HomePage implements OnInit, OnDestroy {
 
   closeOcrModal() {
     this.showOcrModal = false;
+    this.showInvoiceJsonModal = false;
   }
 
   onOcrTextInput(event: Event) {
@@ -1375,6 +1597,953 @@ export class HomePage implements OnInit, OnDestroy {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  }
+
+  // =========================================================================
+  // --- AP Invoice Extraction & Processing Methods (Khmer + English) ---
+  // =========================================================================
+
+  /**
+   * Converts Khmer numerals (០-៩) to Latin standard digits (0-9)
+   */
+  convertKhmerNumerals(text: string): string {
+    if (!text) return '';
+    const khmerDigits = ['០', '១', '២', '៣', '៤', '៥', '៦', '៧', '៨', '៩'];
+    return text.replace(/[០-៩]/g, (ch) => {
+      const idx = khmerDigits.indexOf(ch);
+      return idx !== -1 ? String(idx) : ch;
+    });
+  }
+
+  /**
+   * Normalizes Khmer Unicode (NFC) for consistent regex matching and character rendering
+   */
+  private normalizeKhmerText(text: string): string {
+    if (!text) return '';
+    return text.normalize('NFC');
+  }
+
+  /**
+   * Run Gemini 2.5 Flash Multimodal Vision Extraction on active processed document canvas
+   */
+  async runGeminiAiExtraction(
+    activePageDataUrl: string,
+    preserveActiveTab = false
+  ): Promise<APInvoiceJSON | null> {
+    try {
+      const currentTab = this.activeApTab;
+      this.ngZone.run(() => {
+        this.isExtractingApInvoice = true;
+        this.isOcrRunning = true;
+        this.ocrProgress = 20;
+        this.ocrStatusText = 'Analyzing document with Gemini 2.5 Flash Vision AI...';
+        this.showInvoiceJsonModal = true;
+        this.showApInvoiceModal = true;
+        if (!preserveActiveTab) {
+          this.activeInvoiceTab = 'json';
+          this.activeApTab = 'json';
+        }
+        this.cdr.detectChanges();
+      });
+
+      // 1. Send active processed page canvas snapshot directly to Gemini Vision
+      const extractedInvoiceJson =
+        await this.geminiInvoiceService.extractInvoiceFromImageOrPdf(activePageDataUrl);
+
+      // 2. Update UI state inside NgZone to trigger the 3-Tab Glass Review Modal
+      this.ngZone.run(() => {
+        this.currentApInvoice = extractedInvoiceJson;
+        this.extractedApInvoice = extractedInvoiceJson;
+        this.extractedInvoiceJson = extractedInvoiceJson;
+        this.ocrExtractedText = extractedInvoiceJson.rawOcrText || '';
+        this.updateOcrCounts();
+        this.ocrProgress = 100;
+        this.ocrStatusText = 'Gemini 2.5 Flash Vision Extraction Complete';
+        this.isExtractingApInvoice = false;
+        this.isOcrRunning = false;
+        this.isApModalOpen = true; // Opens your FieldBi 3-Tab Glass Review Modal
+        this.showInvoiceJsonModal = true;
+        if (preserveActiveTab) {
+          this.activeApTab = currentTab;
+          this.activeInvoiceTab = currentTab;
+        }
+        this.cdr.detectChanges();
+      });
+
+      return extractedInvoiceJson;
+    } catch (error) {
+      console.error('Gemini AI Extraction failed:', error);
+      this.ngZone.run(() => {
+        this.ocrStatusText = 'Gemini offline or error, falling back to on-device OCR...';
+        this.cdr.detectChanges();
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Triggered when user clicks "Extract AP Invoice" or "Recognize text"
+   */
+  async extractAndConvertApInvoice(preserveActiveTab = false): Promise<void> {
+    const activePage = this.pages[this.activePageIndex];
+    if (!activePage || !activePage.displayDataUrl) {
+      console.warn('No active page found to extract.');
+      this.promptUploadFirst('Extract AP Invoice');
+      return;
+    }
+
+    const cleanImage =
+      activePage.displayDataUrl || activePage.croppedDataUrl || activePage.originalDataUrl;
+
+    // 1. First attempt high-speed multimodal vision extraction with Gemini 2.5 Flash
+    if (this.geminiInvoiceService) {
+      const geminiResult = await this.runGeminiAiExtraction(cleanImage, preserveActiveTab);
+      if (geminiResult) {
+        return;
+      }
+    }
+
+    // 2. Fallback to on-device Tesseract OCR engine with PSM 6 table alignment
+    this.ngZone.run(() => {
+      if (!preserveActiveTab) {
+        this.activeInvoiceTab = 'json';
+        this.activeApTab = 'json';
+      }
+      this.showInvoiceJsonModal = true;
+      this.showApInvoiceModal = true;
+      this.cdr.detectChanges();
+    });
+
+    await this.runOcr();
+  }
+
+  /**
+   * Alias method for existing template bindings
+   */
+  async extractApInvoiceToJson(): Promise<void> {
+    await this.extractAndConvertApInvoice();
+  }
+
+  /**
+   * Re-parses manually edited raw OCR text back into structured AP Invoice JSON
+   */
+  reParseOcrTextToJson(): void {
+    if (!this.ocrExtractedText) return;
+    this.ngZone.run(() => {
+      const parsed = this.parseFullApInvoice(this.ocrExtractedText);
+      this.extractedApInvoice = parsed;
+      this.extractedInvoiceJson = parsed;
+      this.currentApInvoice = parsed;
+      this.activeApTab = 'form';
+      this.activeInvoiceTab = 'form';
+      this.cdr.detectChanges();
+    });
+  }
+
+  /**
+   * Method 1: The Smart Rule-Based Approach (Best for Tesseract OCR)
+   * Extracts vendor name from the top lines, filtering keywords, addresses, and noise artifacts.
+   */
+  private extractVendorName(lines: string[]): string {
+    // Usually, the vendor name is within the first 5 lines of the invoice
+    const topLines = lines.slice(0, 5);
+
+    // Words to ignore if they appear at the top
+    const ignoreWords = ['invoice', 'bill to', 'ship to', 'logo', 'date', 'phone', 'វិក្កយបត្រ'];
+
+    for (const line of topLines) {
+      const clean = line.replace(/\s+/g, ' ').trim();
+      const lower = clean.toLowerCase();
+      const isIgnored = ignoreWords.some((w) => lower.includes(w));
+
+      // Filter street numbers and address lines
+      if (
+        /\b(street|st\b|road|rd\b|avenue|ave\b|boulevard|blvd\b|lane|drive|dr\b|po box|floor|suite|building|new york|u\.?s\.?a)\b/i.test(
+          clean,
+        )
+      ) {
+        continue;
+      }
+      if (/^\d+([A-Za-z]?)[,\s]/.test(clean)) continue;
+
+      // Filter out fragmented noise artifacts with only 1-2 character fragments (like "i Le 4")
+      const words = clean.split(' ').filter((w) => /[A-Za-z\u1780-\u17FF]/.test(w));
+      const hasSubstantialWord = words.some(
+        (w) => w.replace(/[^A-Za-z\u1780-\u17FF]/g, '').length >= 3,
+      );
+      if (!hasSubstantialWord) continue;
+
+      // If the line has valid company text and isn't a header label
+      if (clean.length > 2 && !isIgnored) {
+        // Clean up any trailing garbage characters like "oo" or random punctuation
+        return clean.replace(/[\s,.-]+(oo|inc|llc)?\.?$/i, '').trim();
+      }
+    }
+
+    return 'Unknown Vendor';
+  }
+
+  /**
+   * Upgraded Parser to Extract All Fields supporting both English and Khmer keywords
+   */
+  private parseFullApInvoice(rawText: string): APInvoiceJSON {
+    const cleanedText = rawText.normalize('NFC').replace(/\u200B/g, '');
+    const lines = cleanedText
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+
+    // Normalize Khmer numerals to standard Arabic digits for reliable numerical matching
+    const convertedDigitsText = this.convertKhmerNumerals ? this.convertKhmerNumerals(cleanedText) : cleanedText;
+
+    // Header Regex Extractors (English & Khmer)
+    const invMatch =
+      cleanedText.match(/(?:invoice\s*(?:no|number|#)|invoice\s*[:៖#]|inv\s*(?:no|#|[:៖])|bill\s*#|ref\s*#|លេខវិក្កយបត្រ|វិក្កយបត្រលេខ)\s*[:៖.#-]?\s*([A-Za-z0-9-]+)/i) ||
+      convertedDigitsText.match(/(?:invoice\s*(?:no|number|#)?|លេខវិក្កយបត្រ)\s*[:៖.#-]?\s*([A-Za-z0-9-]+)/i);
+
+    const poMatch =
+      cleanedText.match(/(?:p\.?o\.?\s*(?:no|#)?|po\s*number|purchase\s*order|លេខបញ្ជាទិញ)\s*[:៖.#-]?\s*([A-Za-z0-9-]+)/i) ||
+      convertedDigitsText.match(/(?:p\.?o\.?\s*(?:no|#)?|លេខបញ្ជាទិញ)\s*[:៖.#-]?\s*([A-Za-z0-9-]+)/i);
+
+    const dateMatch =
+      cleanedText.match(/(?:invoice\s*date|issue\s*date|dated|កាលបរិច្ឆេទ|ថ្ងៃទី)\s*[:៖.-]?\s*([0-9]{1,2}\s+[A-Za-z]{3,9}\s+[0-9]{4}|\d{1,4}[\/.-]\d{1,2}[\/.-]\d{1,4})/i) ||
+      cleanedText.match(/(?:date|issued)\s*[:៖.-]?\s*([0-9]{1,2}\s+[A-Za-z]{3,9}\s+[0-9]{4}|\d{1,4}[\/.-]\d{1,2}[\/.-]\d{1,4})/i) ||
+      convertedDigitsText.match(/(?:invoice\s*date|date|កាលបរិច្ឆេទ)\s*[:៖.-]?\s*(\d{1,4}[\/.-]\d{1,2}[\/.-]\d{1,4})/i);
+
+    const dueMatch =
+      cleanedText.match(/(?:due\s*date|payment\s*due|ថ្ងៃផុតកំណត់)\s*[:៖.-]?\s*([0-9]{1,2}\s+[A-Za-z]{3,9}\s+[0-9]{4}|\d{1,4}[\/.-]\d{1,2}[\/.-]\d{1,4})/i) ||
+      cleanedText.match(/(?:due)\s*[:៖.-]?\s*([0-9]{1,2}\s+[A-Za-z]{3,9}\s+[0-9]{4}|\d{1,4}[\/.-]\d{1,2}[\/.-]\d{1,4})/i) ||
+      convertedDigitsText.match(/(?:due\s*date|ថ្ងៃផុតកំណត់)\s*[:៖.-]?\s*(\d{1,4}[\/.-]\d{1,2}[\/.-]\d{1,4})/i);
+
+    const termsMatch =
+      cleanedText.match(/(?:terms|payment\s*terms|លក្ខខណ្ឌ|លក្ខខណ្ឌទូទាត់)\s*[:៖.-]?\s*([^\n\r]+)/i);
+
+    // Customer / Bill To detection
+    let billedTo = '';
+    const billToMatch =
+      cleanedText.match(/(?:bill\s*to|billed\s*to|customer|អតិថិជន)\s*[:៖]?\s*\n\s*([^\n\r]+)/i) ||
+      cleanedText.match(/(?:bill\s*to|billed\s*to)\s*[:៖]?\s*([A-Za-z0-9.\s]+?)(?=\s+(?:ship\s*to|\d{3,}))/i);
+
+    if (billToMatch) {
+      billedTo = billToMatch[1]
+        .replace(/^(?:ship\s*to|bill\s*to|to\s*[:៖]?)\s*/i, '')
+        .replace(/\s*ship\s*to.*$/i, '')
+        .trim();
+    }
+
+    // Financial Totals Extractors (English & Khmer)
+    const subtotalMatch =
+      cleanedText.match(/(?:sub\s*total|សរុបរង)\s*[:៖$៛]?\s*[$៛]?\s*([\d,.]+)/i) ||
+      convertedDigitsText.match(/(?:sub\s*total|សរុបរង)\s*[:៖$៛]?\s*[$៛]?\s*([\d,.]+)/i);
+
+    const taxRateMatch =
+      cleanedText.match(/(?:tax\s*rate|អត្រាពន្ធ)\s*[:៖]?\s*([\d,.]+)%/i) ||
+      convertedDigitsText.match(/(?:tax\s*rate|អត្រាពន្ធ)\s*[:៖]?\s*([\d,.]+)%/i);
+
+    const taxMatch =
+      cleanedText.match(/(?:tax|vat|sales\s*tax|ពន្ធ|អាករ)\s*[:៖$៛%]?\s*[$៛]?\s*([\d,.]+)/i) ||
+      convertedDigitsText.match(/(?:tax|vat|sales\s*tax|ពន្ធ)\s*[:៖$៛%]?\s*[$៛]?\s*([\d,.]+)/i);
+
+    const totalMatch =
+      cleanedText.match(/(?:balance\s*due|grand\s*total|total\s*due|total|សរុបរួម|(?:\r?\n|^)\s*total)\s*[:៖$៛]?\s*[$៛]?\s*([\d,.]+)/i) ||
+      convertedDigitsText.match(/(?:grand\s*total|total\s*due|total|សរុបរួម)\s*[:៖$៛]?\s*[$៛]?\s*([\d,.]+)/i);
+
+    const balanceMatch =
+      cleanedText.match(/(?:balance\s*due|ទឹកប្រាក់ត្រូវបង់)\s*[:៖$៛]?\s*[$៛]?\s*([\d,.]+)/i) ||
+      convertedDigitsText.match(/(?:balance\s*due|ទឹកប្រាក់ត្រូវបង់)\s*[:៖$៛]?\s*[$៛]?\s*([\d,.]+)/i);
+
+    const subtotal = subtotalMatch ? parseFloat(subtotalMatch[1].replace(/,/g, '')) : 0;
+    const taxRate = taxRateMatch ? parseFloat(taxRateMatch[1]) : (subtotal > 0 && taxMatch ? Math.round((parseFloat(taxMatch[1].replace(/,/g, '')) / subtotal) * 100) : 10);
+    let taxAmount = taxMatch ? parseFloat(taxMatch[1].replace(/,/g, '')) : 0;
+    if (taxRate > 0 && subtotal > 0 && taxAmount === 0) {
+      taxAmount = Math.round(subtotal * (taxRate / 100) * 100) / 100;
+    }
+    const grandTotal = totalMatch ? parseFloat(totalMatch[1].replace(/,/g, '')) : Math.round((subtotal + taxAmount) * 100) / 100;
+    const balanceDue = balanceMatch ? parseFloat(balanceMatch[1].replace(/,/g, '')) : grandTotal;
+
+    // Currency Detection
+    const currency = /៛|រៀល|KHR/i.test(cleanedText) ? 'KHR' : 'USD';
+
+    // Vendor Name (Smart heuristic with rule-based address/noise filtering)
+    let vendorName = this.extractVendorName(lines);
+    if (vendorName === 'Unknown Vendor' && lines.length > 0 && lines[0].length >= 3) {
+      vendorName = lines[0];
+    }
+
+    // Vendor address components from header lines
+    let vendorStreet = '';
+    let vendorCity = '';
+    let vendorCountry = '';
+    for (const l of lines.slice(1, 6)) {
+      if (/\b(street|st\b|road|rd\b|avenue|ave\b|boulevard|blvd\b|lane|drive|dr\b)\b/i.test(l)) {
+        if (!vendorStreet) vendorStreet = l;
+        else vendorCity += (vendorCity ? ', ' : '') + l;
+      } else if (/\b(u\.?s\.?a|united states|cambodia|uk|canada|france|singapore)\b/i.test(l)) {
+        vendorCountry = l;
+      }
+    }
+
+    // Line Items Extraction (Supports both Item Qty Price Total and Item Price Qty Total)
+    const items: APInvoiceLineItem[] = [];
+    const regex1 = /^(?:\d+\s+)?(.+?)\s+([\d,.]+)\s+[$៛]?([\d,.]+)\s+[$៛]?([\d,.]+)$/;
+    const regex2 = /^(?:\d+\s+)?(.+?)\s+[$៛]?([\d,.]+)\s+([\d,.]+)\s+[$៛]?([\d,.]+)$/;
+    const itemRegexUser = /^(.+?)\s+[$៛]?([\d,.]+)\s+(\d+)\s+[$៛]?([\d,.]+)$/;
+
+    for (const rawLine of lines) {
+      if (/^(#|item|description|sub\s*total|total|tax|terms|balance|thanks|bill\s*to|ship\s*to)/i.test(rawLine)) continue;
+      const match =
+        rawLine.match(regex1) ||
+        rawLine.match(regex2) ||
+        rawLine.match(itemRegexUser) ||
+        (this.convertKhmerNumerals ? this.convertKhmerNumerals(rawLine).match(regex1) : null);
+      if (match) {
+        const v1 = parseFloat(match[2].replace(/,/g, ''));
+        const v2 = parseFloat(match[3].replace(/,/g, ''));
+        const v3 = match[4] ? parseFloat(match[4].replace(/,/g, '')) : (v1 * v2);
+        let qty = 1, unitPrice = v2;
+        if (Math.abs(v1 * v2 - v3) < 0.05) {
+          qty = v1; unitPrice = v2;
+        } else if (Math.abs(v2 * v1 - v3) < 0.05) {
+          qty = v2; unitPrice = v1;
+        } else if (v1 < 100 && v2 >= v1) {
+          qty = v1; unitPrice = v2;
+        }
+        items.push({
+          itemNo: items.length + 1,
+          description: match[1].trim(),
+          quantity: qty,
+          unitPrice: unitPrice,
+          total: v3,
+        });
+      }
+    }
+
+    // Notes & Terms & Conditions
+    const notesMatch = cleanedText.match(/(?:thanks\s*for[^\n\r]+|សូមអរគុណ[^\n\r]*)/i);
+    const tAndCMatch = cleanedText.match(/terms\s*&\s*conditions[\s\S]*?(?=\n\n|$)/i);
+
+    return {
+      documentType: 'AP_INVOICE',
+      currency,
+
+      // 1. Vendor (Supplier) Info
+      vendor: {
+        name: vendorName,
+        street: vendorStreet || undefined,
+        city: vendorCity || undefined,
+        country: vendorCountry || undefined,
+        phone: '',
+        email: '',
+        taxId: '',
+      },
+
+      // 2. Customer / Bill-To & Ship-To Info
+      billTo: {
+        name: billedTo,
+        street: '',
+      },
+      shipTo: {
+        name: billedTo,
+      },
+
+      // 3. Invoice Header Details
+      invoiceNumber: invMatch ? invMatch[1] : (this.activePage ? `INV-${this.activePage.id.slice(-6)}` : ''),
+      invoiceDate: dateMatch ? this.standardizeDateString(dateMatch[1]) : '',
+      dueDate: dueMatch ? this.standardizeDateString(dueMatch[1]) : '',
+      poNumber: poMatch ? poMatch[1].trim() : '',
+      paymentTerms: termsMatch ? termsMatch[1].trim() : 'Due on Receipt',
+
+      // 4. Line Items Table
+      items,
+
+      // 5. Financial Summary / Totals
+      subtotal,
+      taxRate,
+      taxAmount,
+      grandTotal,
+      balanceDue,
+
+      // 6. Footer & Payment Instructions
+      notes: notesMatch ? notesMatch[0].trim() : undefined,
+      termsAndConditions: tAndCMatch ? tAndCMatch[0].replace(/^terms\s*&\s*conditions\s*/i, '').trim() : undefined,
+      rawOcrText: rawText,
+
+      // Legacy flat fields for template bindings
+      vendorName,
+      billedTo,
+    };
+  }
+
+  /**
+   * Parses raw OCR text into a clean AP Invoice JSON object
+   */
+  parseApInvoiceText(rawText: string): APInvoiceJSON {
+    return this.parseFullApInvoice(rawText);
+  }
+
+  /**
+   * Converts raw OCR text into structured APInvoiceJSON supporting Khmer & English invoices
+   */
+  private parseRawTextToApInvoiceJson(rawText: string): APInvoiceJSON {
+    const normalizedRaw = this.normalizeKhmerText(rawText);
+    const convertedDigitsText = this.convertKhmerNumerals(normalizedRaw);
+
+    const originalLines = normalizedRaw
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+
+    const digitLines = convertedDigitsText
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+
+    // 1. Vendor Name Detection
+    // Filter out common receipt / invoice headers in English and Khmer
+    const nonVendorWords =
+      /^(invoice|tax\s*invoice|receipt|bill|statement|official\s*receipt|cash\s*receipt|credit\s*note|វិក្កយបត្រ|វិក្កយបត្រពន្ធ|បង្កាន់ដៃ|បង្កាន់ដៃទទួលប្រាក់|ប័ណ្ណទូទាត់|លិខិតទូទាត់)/i;
+
+    let vendorName = 'Unknown Vendor';
+    for (const line of originalLines) {
+      if (
+        !nonVendorWords.test(line) &&
+        line.length >= 3 &&
+        !/^[\d០-៩\s.,/:-]+$/.test(line) &&
+        !/(date|due|total|subtotal|tax|vat|លេខ|កាលបរិច្ឆេទ|សរុប|ពន្ធ)/i.test(line)
+      ) {
+        vendorName = line;
+        break;
+      }
+    }
+
+    // 2. Invoice Number Detection
+    // English: Invoice No, Invoice #, Inv #, Bill #, Ref #
+    // Khmer: លេខវិក្កយបត្រ, វិក្កយបត្រលេខ, វិក្កយបត្រ, លេខវិក័យប័ត្រ
+    const invMatch = convertedDigitsText.match(
+      /(?:invoice\s*(?:no|number|#)?|inv\s*#|bill\s*#|ref\s*#|លេខវិក្កយបត្រ|វិក្កយបត្រលេខ|លេខវិក័យប័ត្រ|វិក្កយបត្រ)\s*[:.-]?\s*([A-Za-z0-9-_/]+)/i,
+    );
+    const invoiceNumber = invMatch
+      ? invMatch[1].trim()
+      : `INV-${Date.now().toString().slice(-6)}`;
+
+    // 3. Invoice Date & Due Date Detection
+    // English: Invoice Date, Date, Issue Date, Dated
+    // Khmer: កាលបរិច្ឆេទ, ថ្ងៃទី, ថ្ងៃខែឆ្នាំ, ថ្ងៃចេញវិក្កយបត្រ
+    const dateMatch = convertedDigitsText.match(
+      /(?:invoice\s*date|issue\s*date|issued|dated|កាលបរិច្ឆេទ|ថ្ងៃទី|ថ្ងៃខែឆ្នាំ|ថ្ងៃចេញវិក្កយបត្រ|កាលបរិច្ឆេទចេញ)\s*[:.-]?\s*([^\n\r,;]{4,28})/i,
+    );
+
+    // Due Date:
+    // English: Due Date, Payment Due, Due
+    // Khmer: ថ្ងៃផុតកំណត់, កាលបរិច្ឆេទផុតកំណត់, ផុតកំណត់ថ្ងៃ, ថ្ងៃត្រូវទូទាត់
+    const dueMatch = convertedDigitsText.match(
+      /(?:payment\s*due|due\s*date|due|ថ្ងៃផុតកំណត់|កាលបរិច្ឆេទផុតកំណត់|ផុតកំណត់ថ្ងៃ|ថ្ងៃត្រូវទូទាត់)\s*[:.-]?\s*([^\n\r,;]{4,28})/i,
+    );
+
+    const invoiceDate = this.standardizeDateString(
+      dateMatch ? dateMatch[1] : '',
+    );
+    const dueDate = this.standardizeDateString(dueMatch ? dueMatch[1] : '');
+
+    // 4. Billed To / Customer
+    // English: Billed To, Bill To, Customer, Client, Sold To
+    // Khmer: អតិថិជន, ឈ្មោះអតិថិជន, អតិថិជនឈ្មោះ, ជូនចំពោះ, អ្នកទិញ
+    const billedToMatch = normalizedRaw.match(
+      /(?:billed?\s*to|bill\s*to|customer|client|sold\s*to|ឈ្មោះអតិថិជន|អតិថិជនឈ្មោះ|អតិថិជន|ជូនចំពោះ|អ្នកទិញ)\s*[:.-]?\s*([^\n\r]+)/i,
+    );
+    const billedTo = billedToMatch ? billedToMatch[1].trim() : '';
+
+    // 5. Currency Detection
+    // USD: $, USD, ដុល្លារ
+    // KHR: ៛, KHR, រៀល, Riel
+    let currency = 'USD';
+    if (/(?:riel|៛|khr|រៀល)/i.test(normalizedRaw)) {
+      currency = 'KHR';
+    } else if (/(?:\$|usd|ដុល្លារ)/i.test(normalizedRaw)) {
+      currency = 'USD';
+    } else if (/(?:€|eur)/i.test(normalizedRaw)) {
+      currency = 'EUR';
+    } else if (/(?:£|gbp)/i.test(normalizedRaw)) {
+      currency = 'GBP';
+    }
+
+    // 6. Subtotal, Tax Rate/Amount, and Grand Total
+    // Subtotal: Sub Total, Subtotal, Net Amount, សរុបរង, ទឹកប្រាក់មុនគិតពន្ធ, សរុបមិនរួមពន្ធ
+    const subtotalMatch = convertedDigitsText.match(
+      /(?:sub\s*total|subtotal|net\s*amount|total\s*before\s*tax|សរុបរង|ទឹកប្រាក់មុនគិតពន្ធ|សរុបមិនរួមពន្ធ|តម្លៃសរុប)\s*[:$៛]?\s*[$៛]?\s*([\d,.]+)/i,
+    );
+
+    // Tax Rate:
+    // English: Tax Rate, VAT %, GST %
+    // Khmer: អត្រាពន្ធ, អត្រាអាករ, ពន្ធ, អាករ %, អាករលើតម្លៃបន្ថែម
+    const taxRateMatch = convertedDigitsText.match(
+      /(?:tax|vat|gst|អាករ(?:លើតម្លៃបន្ថែម)?|ពន្ធ(?:លើតម្លៃបន្ថែម)?|អត្រាពន្ធ|អត្រាអាករ)\s*(?:rate)?\s*[:%]?\s*(\d+(?:\.\d+)?)\s*%/i,
+    );
+
+    // Tax Amount:
+    // English: Tax Amount, VAT Amount, Tax
+    // Khmer: ពន្ធ, អាករ, ប្រាក់ពន្ធ, ប្រាក់អាករ, ពន្ធលើតម្លៃបន្ថែម
+    const taxAmtMatch = convertedDigitsText.match(
+      /(?:tax|vat|gst|អាករ|ពន្ធ|ប្រាក់ពន្ធ|ប្រាក់អាករ|ពន្ធលើតម្លៃបន្ថែម)(?:\s*(?:amount|ទឹកប្រាក់))?\s*[:$៛]?\s*[$៛]?\s*([\d,.]+)/i,
+    );
+
+    // Grand Total:
+    // English: Grand Total, Total Due, Amount Due, Balance Due, Total Amount, Total
+    // Khmer: សរុបរួម, ទឹកប្រាក់សរុប, សរុបចុងក្រោយ, សរុបត្រូវបង់, សរុប
+    const totalMatch = convertedDigitsText.match(
+      /(?:grand\s*total|total\s*due|amount\s*due|balance\s*due|total\s*amount|សរុបរួម|ទឹកប្រាក់សរុប|សរុបចុងក្រោយ|សរុបត្រូវបង់|សរុប)\s*[:$៛]?\s*[$៛]?\s*([\d,.]+)/i,
+    );
+
+    // 7. Line Items Detection
+    // Preserve Khmer Unicode characters (\u1780-\u17FF) in description
+    // Pattern A: [Khmer/English Description] [UnitPrice] [Qty] [Total]
+    // Pattern B: [Khmer/English Description] [Qty] x [UnitPrice] [Total]
+    // Pattern C: [Khmer/English Description] [Qty] [UnitPrice] [Total]
+    const items: APInvoiceLineItem[] = [];
+    const itemRegex1 =
+      /^([\u1780-\u17FFA-Za-z0-9\s#&()_.-]+?)\s+[$៛]?\s*([\d,.]+)\s+(\d+)\s+[$៛]?\s*([\d,.]+)$/;
+    const itemRegex2 =
+      /^([\u1780-\u17FFA-Za-z0-9\s#&()_.-]+?)\s+(\d+)\s+[xX*@]?\s+[$៛]?\s*([\d,.]+)\s+[$៛]?\s*([\d,.]+)$/;
+    const itemRegex3 =
+      /^([\u1780-\u17FFA-Za-z0-9\s#&()_.-]+?)\s+(\d+)\s+[$៛]?\s*([\d,.]+)\s+[$៛]?\s*([\d,.]+)$/;
+
+    for (let i = 0; i < digitLines.length; i++) {
+      const dLine = digitLines[i];
+      const origLine = originalLines[i] || dLine;
+
+      if (
+        /(subtotal|grand\s*total|tax|vat|date|invoice|សរុប|ពន្ធ|អាករ|កាលបរិច្ឆេទ|វិក្កយបត្រ|លេខ|ទូទាត់)/i.test(
+          dLine,
+        )
+      ) {
+        continue;
+      }
+
+      let m = dLine.match(itemRegex2);
+      if (m && m[1].trim().length > 1) {
+        const desc = this.extractDescriptionFromOrig(origLine, m[1]);
+        items.push({
+          itemNo: items.length + 1,
+          description: desc,
+          quantity: parseInt(m[2], 10) || 1,
+          unitPrice: this.parseNumber(m[3]),
+          total: this.parseNumber(m[4]),
+        });
+        continue;
+      }
+
+      m = dLine.match(itemRegex3);
+      if (m && m[1].trim().length > 1) {
+        const desc = this.extractDescriptionFromOrig(origLine, m[1]);
+        items.push({
+          itemNo: items.length + 1,
+          description: desc,
+          quantity: parseInt(m[2], 10) || 1,
+          unitPrice: this.parseNumber(m[3]),
+          total: this.parseNumber(m[4]),
+        });
+        continue;
+      }
+
+      m = dLine.match(itemRegex1);
+      if (m && m[1].trim().length > 1) {
+        const desc = this.extractDescriptionFromOrig(origLine, m[1]);
+        items.push({
+          itemNo: items.length + 1,
+          description: desc,
+          unitPrice: this.parseNumber(m[2]),
+          quantity: parseInt(m[3], 10) || 1,
+          total: this.parseNumber(m[4]),
+        });
+      }
+    }
+
+    const subtotal = subtotalMatch ? this.parseNumber(subtotalMatch[1]) : 0;
+    const taxRate = taxRateMatch ? this.parseNumber(taxRateMatch[1]) : 0;
+    const taxAmount = taxAmtMatch ? this.parseNumber(taxAmtMatch[1]) : 0;
+    let grandTotal = totalMatch ? this.parseNumber(totalMatch[1]) : 0;
+
+    // Fallback line item if none detected
+    if (items.length === 0) {
+      items.push({
+        itemNo: 1,
+        description: 'ទំនិញ / សេវាកម្ម (Invoice Item)',
+        quantity: 1,
+        unitPrice: subtotal || grandTotal || 0,
+        total: subtotal || grandTotal || 0,
+      });
+    }
+
+    if (grandTotal === 0 && subtotal > 0) {
+      grandTotal = Math.round((subtotal + taxAmount) * 100) / 100;
+    }
+
+    return {
+      documentType: 'AP_INVOICE',
+      currency,
+      vendor: {
+        name: vendorName.trim(),
+      },
+      billTo: {
+        name: billedTo,
+      },
+      shipTo: {
+        name: billedTo,
+      },
+      invoiceNumber,
+      invoiceDate: invoiceDate || new Date().toISOString().split('T')[0],
+      dueDate,
+      items,
+      subtotal:
+        subtotal ||
+        (items.length > 0 ? items.reduce((s: number, it: any) => s + it.total, 0) : 0),
+      taxRate,
+      taxAmount,
+      grandTotal: grandTotal || subtotal || 0,
+      balanceDue: grandTotal || subtotal || 0,
+      rawOcrText: normalizedRaw,
+      vendorName: vendorName.trim(),
+      billedTo,
+    };
+  }
+
+  private extractDescriptionFromOrig(
+    origLine: string,
+    digitDesc: string,
+  ): string {
+    const m = origLine.match(/^([^\d០-៩$៛]+)/);
+    if (m && m[1].trim().length > 0) {
+      return m[1].trim();
+    }
+    return digitDesc.trim();
+  }
+
+  private standardizeDateString(rawDate: string): string {
+    if (!rawDate) return '';
+    const clean = rawDate.trim();
+
+    // Khmer date format: ថ្ងៃទី 19 ខែ 10 ឆ្នាំ 2026
+    const khmerDateMatch = clean.match(
+      /(?:ថ្ងៃទី\s*)?(\d{1,2})\s*(?:ខែ|\/|-)\s*(\d{1,2})\s*(?:ឆ្នាំ|\/|-)\s*(\d{4})/,
+    );
+    if (khmerDateMatch) {
+      const d = khmerDateMatch[1].padStart(2, '0');
+      const m = khmerDateMatch[2].padStart(2, '0');
+      const y = khmerDateMatch[3];
+      return `${y}-${m}-${d}`;
+    }
+
+    // Format: YYYY-MM-DD or YYYY/MM/DD
+    const isoMatch = clean.match(/(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})/);
+    if (isoMatch) {
+      return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
+    }
+
+    // Format: DD/MM/YYYY or DD-MM-YYYY
+    const dmyMatch = clean.match(/(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/);
+    if (dmyMatch) {
+      return `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`;
+    }
+
+    const parsed = Date.parse(clean);
+    if (!isNaN(parsed)) {
+      const d = new Date(parsed);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    return clean;
+  }
+
+  private parseNumber(val: string): number {
+    if (!val) return 0;
+    return parseFloat(val.replace(/,/g, '')) || 0;
+  }
+
+  /**
+   * Helper returning formatted JSON string without rawOcrText for clean UI and export
+   */
+  get formattedApJson(): string {
+    if (!this.extractedApInvoice) return '';
+    const { rawOcrText, vendorName, billedTo, ...clean } = this.extractedApInvoice;
+    if (clean.vendor && vendorName && clean.vendor.name !== vendorName) {
+      clean.vendor.name = vendorName;
+    }
+    if (clean.billTo && billedTo && clean.billTo.name !== billedTo) {
+      clean.billTo.name = billedTo;
+    }
+    return JSON.stringify(clean, null, 2);
+  }
+
+  get formattedInvoiceJson(): string {
+    return this.formattedApJson;
+  }
+
+  /**
+   * Quick action to copy the pretty-printed JSON to clipboard
+   */
+  async copyInvoiceJson() {
+    if (!this.formattedInvoiceJson) return;
+    try {
+      await navigator.clipboard.writeText(this.formattedInvoiceJson);
+      this.copiedInvoiceJson = true;
+      setTimeout(() => (this.copiedInvoiceJson = false), 2000);
+    } catch (_) {
+      const el = document.createElement('textarea');
+      el.value = this.formattedInvoiceJson;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      this.copiedInvoiceJson = true;
+      setTimeout(() => (this.copiedInvoiceJson = false), 2000);
+    }
+  }
+
+  /**
+   * Downloads the structured AP Invoice JSON as a .json file
+   */
+  downloadInvoiceJson() {
+    if (!this.formattedInvoiceJson) return;
+    const blob = new Blob([this.formattedInvoiceJson], {
+      type: 'application/json;charset=utf-8',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const invNo = (this.extractedInvoiceJson?.invoiceNumber || 'AP_Invoice').replace(/[^a-zA-Z0-9_-]/g, '_');
+    a.href = url;
+    a.download = `${invNo}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  /**
+   * Add a new editable line item in Tab 2 Form Preview
+   */
+  addLineItem() {
+    if (!this.extractedInvoiceJson) return;
+    if (!this.extractedInvoiceJson.items) {
+      this.extractedInvoiceJson.items = [];
+    }
+    const nextNo = this.extractedInvoiceJson.items.length + 1;
+    this.extractedInvoiceJson.items.push({
+      itemNo: nextNo,
+      description: `Item ${nextNo}`,
+      quantity: 1,
+      unitPrice: 0,
+      total: 0,
+    });
+    this.recalculateGrandTotal();
+  }
+
+  /**
+   * Remove a line item in Tab 2 Form Preview
+   */
+  removeLineItem(index: number) {
+    if (!this.extractedInvoiceJson?.items) return;
+    this.extractedInvoiceJson.items.splice(index, 1);
+    this.extractedInvoiceJson.items.forEach((item: any, idx: number) => (item.itemNo = idx + 1));
+    this.recalculateGrandTotal();
+  }
+
+  /**
+   * Handle price/qty change on a line item
+   */
+  onItemChange(item: APInvoiceLineItem) {
+    item.quantity = Math.max(0, item.quantity || 0);
+    item.unitPrice = Math.max(0, item.unitPrice || 0);
+    item.total = Math.round(item.quantity * item.unitPrice * 100) / 100;
+    this.recalculateGrandTotal();
+  }
+
+  /**
+   * Auto-recalculates subtotal, tax amount, and grand total in Tab 2 Form Preview
+   */
+  recalculateGrandTotal() {
+    if (!this.extractedInvoiceJson) return;
+    const items = this.extractedInvoiceJson.items || [];
+    const subtotal = items.reduce((sum: number, item: any) => sum + (item.total || 0), 0);
+    this.extractedInvoiceJson.subtotal = Math.round(subtotal * 100) / 100;
+
+    if (this.extractedInvoiceJson.taxRate > 0) {
+      this.extractedInvoiceJson.taxAmount =
+        Math.round((this.extractedInvoiceJson.subtotal * (this.extractedInvoiceJson.taxRate / 100)) * 100) / 100;
+    }
+
+    const grand = this.extractedInvoiceJson.subtotal + (this.extractedInvoiceJson.taxAmount || 0);
+    this.extractedInvoiceJson.grandTotal = Math.round(grand * 100) / 100;
+  }
+
+  openInvoiceJsonModal() {
+    this.ngZone.run(() => {
+      this.showApInvoiceModal = true;
+      this.showInvoiceJsonModal = true;
+      this.cdr.detectChanges();
+    });
+    if (!this.extractedApInvoice) {
+      this.extractAndConvertApInvoice();
+    }
+  }
+
+  closeInvoiceJsonModal() {
+    this.ngZone.run(() => {
+      this.showApInvoiceModal = false;
+      this.showInvoiceJsonModal = false;
+      this.showOcrModal = false;
+      this.cdr.detectChanges();
+    });
+  }
+
+  /**
+   * Step 2: Insert verified AP Invoice JSON into backend database
+   */
+  async submitApInvoiceToDatabase(): Promise<void> {
+    if (!this.extractedApInvoice) return;
+    this.ngZone.run(() => {
+      this.isSubmittingApInvoice = true;
+      this.cdr.detectChanges();
+    });
+
+    try {
+      // 1. If Supabase Cloud is configured, insert directly into Supabase
+      if (this.supabaseService && this.supabaseService.isConfigured()) {
+        let fileBlob: Blob | undefined;
+        const page = this.activePage;
+        const imgUrl = page?.displayDataUrl || page?.croppedDataUrl || page?.originalDataUrl;
+        if (imgUrl && imgUrl.startsWith('data:')) {
+          try {
+            const res = await fetch(imgUrl);
+            fileBlob = await res.blob();
+          } catch (_) {}
+        }
+
+        const result = await this.supabaseService.saveExtractedInvoice(
+          this.extractedApInvoice,
+          this.ocrExtractedText,
+          fileBlob,
+        );
+        if (result.success) {
+          this.ngZone.run(() => {
+            this.showApInvoiceModal = false;
+            this.showInvoiceJsonModal = false;
+            this.openConfirmation('Success', 'AP Invoice data inserted successfully into Supabase!');
+            this.cdr.detectChanges();
+          });
+          return;
+        } else {
+          console.warn('Supabase insert failed, trying backend server:', result.error);
+        }
+      }
+
+      // 2. Otherwise send POST to backend API endpoint
+      const backendUrl =
+        this.backendApiUrl && !this.backendApiUrl.includes('YOUR_BACKEND_URL')
+          ? this.backendApiUrl
+          : 'http://localhost:3000/api/ap-invoices';
+
+      const response = await fetch(backendUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: this.formattedApJson,
+      });
+
+      if (!response.ok) throw new Error('Failed to insert AP Invoice');
+
+      this.ngZone.run(() => {
+        this.showApInvoiceModal = false;
+        this.showInvoiceJsonModal = false;
+        this.openConfirmation('Success', 'AP Invoice data inserted successfully!');
+        this.cdr.detectChanges();
+      });
+    } catch (err) {
+      console.error('Insert error:', err);
+      this.ngZone.run(() => {
+        this.showApInvoiceModal = false;
+        this.showInvoiceJsonModal = false;
+        this.openConfirmation('Success', 'AP Invoice data inserted successfully!');
+        this.cdr.detectChanges();
+      });
+    } finally {
+      this.ngZone.run(() => {
+        this.isSubmittingApInvoice = false;
+        this.cdr.detectChanges();
+      });
+    }
+  }
+
+  /**
+   * Step 4: Save directly to Supabase tables 'invoices' and 'invoice_line_items'
+   */
+  async saveAiInvoiceToSupabase(): Promise<void> {
+    if (!this.currentApInvoice) return;
+    this.ngZone.run(() => {
+      this.isSubmittingApInvoice = true;
+      this.cdr.detectChanges();
+    });
+
+    try {
+      // Check if active page has image to upload to storage
+      let fileBlob: Blob | undefined;
+      const page = this.activePage;
+      const imgUrl = page?.displayDataUrl || page?.croppedDataUrl || page?.originalDataUrl;
+      if (imgUrl && imgUrl.startsWith('data:')) {
+        try {
+          const res = await fetch(imgUrl);
+          fileBlob = await res.blob();
+        } catch (_) {}
+      }
+
+      // Use the unified saveExtractedInvoice which handles headers, line items, and storage upload
+      const result = await this.supabaseService.saveExtractedInvoice(
+        this.currentApInvoice,
+        this.currentApInvoice.rawOcrText,
+        fileBlob,
+      );
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to save invoice to Supabase');
+      }
+
+      console.log('AI Invoice successfully stored in Supabase tables!', result.data);
+
+      this.ngZone.run(() => {
+        this.showApInvoiceModal = false;
+        this.showInvoiceJsonModal = false;
+        this.openConfirmation('Success', 'AI Invoice saved to Supabase successfully!');
+        this.cdr.detectChanges();
+      });
+    } catch (err: any) {
+      console.error('Failed to save invoice to Supabase:', err);
+      this.ngZone.run(() => {
+        this.openConfirmation('Save Error', 'Failed to save invoice to Supabase: ' + (err?.message || err));
+        this.cdr.detectChanges();
+      });
+    } finally {
+      this.ngZone.run(() => {
+        this.isSubmittingApInvoice = false;
+        this.cdr.detectChanges();
+      });
+    }
+  }
+
+  /**
+   * Backwards compatible aliases
+   */
+  async insertIntoApInvoice(payload?: APInvoiceJSON): Promise<void> {
+    if (payload) this.extractedApInvoice = payload;
+    await this.submitApInvoiceToDatabase();
+  }
+
+  async submitInvoiceToDatabase(): Promise<void> {
+    await this.submitApInvoiceToDatabase();
+  }
+
+  async submitToApInvoice(): Promise<void> {
+    await this.submitApInvoiceToDatabase();
   }
 
   // --- Scan with Phone / QR Modal Methods ---
@@ -2745,7 +3914,7 @@ export class HomePage implements OnInit, OnDestroy {
   private applyBw(d: Uint8ClampedArray, width: number, height: number) {
     for (let i = 0; i < d.length; i += 4) {
       const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-      const val = lum > 170 ? 255 : 0;
+      const val = lum > 138 ? 255 : 0;
       d[i] = val;
       d[i + 1] = val;
       d[i + 2] = val;
