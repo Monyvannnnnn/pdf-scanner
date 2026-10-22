@@ -86,6 +86,7 @@
     <div
       class="cs-body"
       [class.crop-active]="isCropMode"
+      [class.invoice-sidebar-open]="showInvoiceJsonModal"
       (scroll)="onBodyScroll($event)"
     >
       <!-- CARD 1 (LEFT): Scanly & Recent Scans (Desktop) -->
@@ -289,10 +290,10 @@
             <button
               type="button"
               class="btn-extract-ap-header"
-              [class.active]="pages.length > 0"
-              (click)="extractAndConvertApInvoice()"
+              [class.active]="showInvoiceJsonModal"
+              (click)="toggleInvoiceSidebar()"
               [disabled]="pages.length === 0 || isProcessing"
-              title="Extract active invoice image into AP Invoice JSON & Form"
+              title="Extract or Review Data from PDF, Image in Sidebar"
             >
               <svg
                 width="16"
@@ -309,7 +310,7 @@
                 <line x1="16" y1="13" x2="8" y2="13"></line>
                 <line x1="16" y1="17" x2="8" y2="17"></line>
               </svg>
-              <span>Extract AP Invoice</span>
+              <span>{{ showInvoiceJsonModal ? 'Close Data' : 'Data from PDF, Image' }}</span>
             </button>
 
             <button
@@ -871,7 +872,7 @@
                 class="mobile-tool-btn"
                 [class.active]="showInvoiceJsonModal"
                 (click)="extractApInvoiceToJson()"
-                title="Extract AP Invoice"
+                title="Data from PDF, Image"
               >
                 <svg
                   width="20"
@@ -888,7 +889,7 @@
                   <line x1="16" y1="13" x2="8" y2="13"></line>
                   <line x1="16" y1="17" x2="8" y2="17"></line>
                 </svg>
-                <span>Invoice</span>
+                <span>Data</span>
               </button>
 
               <button
@@ -921,7 +922,10 @@
       </main>
 
       <!-- CARD 3 (RIGHT): White "Edit" Tool Panel with Icons (Desktop) -->
-      <aside class="cs-panel-edit desktop-only">
+      <aside
+        class="cs-panel-edit desktop-only"
+        [class.panel-collapsed]="showInvoiceJsonModal"
+      >
         <h3 class="edit-panel-title">Edit</h3>
 
         <div class="edit-actions-list">
@@ -1194,8 +1198,8 @@
             (click)="extractApInvoiceToJson()"
             [title]="
               activePage
-                ? 'Extract AP Invoice to Structured JSON & Form'
-                : 'Upload or scan an invoice first'
+                ? 'Extract Data from PDF, Image to Structured Form & JSON'
+                : 'Upload or scan a document first'
             "
           >
             <svg
@@ -1215,7 +1219,7 @@
               <line x1="16" y1="17" x2="8" y2="17"></line>
               <polyline points="10 9 9 9 8 9"></polyline>
             </svg>
-            <span>Extract AP Invoice</span>
+            <span class="btn-extract-text">Data from PDF, Image</span>
             <span class="ap-badge-pill">AI</span>
           </button>
 
@@ -1312,6 +1316,756 @@
           </div>
         </div>
       </aside>
+ 
+      <!-- CARD 4 (RIGHT): AP INVOICE REVIEW & EXTRACTION SIDEBAR -->
+      <aside class="cs-panel-invoice-sidebar" [class.open]="showInvoiceJsonModal">
+          <!-- 1. Sidebar Header -->
+          <div class="sidebar-header">
+            <div class="sidebar-top-row">
+              <div class="sidebar-brand-group">
+                <button
+                  type="button"
+                  class="btn-sidebar-mobile-back mobile-only"
+                  (click)="closeInvoiceJsonModal()"
+                  title="Back to Scan"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                  </svg>
+                  <span>Back</span>
+                </button>
+
+                <span class="invoice-brand-badge">FieldBi AP Vision</span>
+                <span class="invoice-status-pill">
+                  @if (isExtractingInvoice || isOcrRunning) {
+                    <span class="status-pulse-dot"></span>
+                    <span>{{ ocrProgress }}% OCR</span>
+                  } @else {
+                    <span class="status-dot-green"></span>
+                    <span>Verified Data</span>
+                  }
+                </span>
+                <span class="invoice-page-pill">P{{ activePageIndex + 1 }}/{{ pages.length }}</span>
+              </div>
+
+              <div class="sidebar-header-actions">
+                <button
+                  type="button"
+                  class="btn-sidebar-icon"
+                  (click)="extractAndConvertApInvoice(true)"
+                  title="Re-run AI Vision Extraction"
+                  [disabled]="isExtractingInvoice || isOcrRunning"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                  </svg>
+                </button>
+
+                <button
+                  type="button"
+                  class="btn-sidebar-close"
+                  (click)="closeInvoiceJsonModal()"
+                  title="Close sidebar (Esc)"
+                  aria-label="Close"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="sidebar-title-row">
+              <h3 class="sidebar-title">Data from PDF, Image</h3>
+              <p class="sidebar-subtitle">Review extracted fields, line items, or raw OCR text side-by-side with document.</p>
+            </div>
+
+            <!-- 3-Tab Segmented Switcher -->
+            <div class="invoice-tab-nav">
+              <button
+                type="button"
+                class="invoice-tab-btn"
+                [class.active]="activeInvoiceTab === 'form'"
+                (click)="activeInvoiceTab = 'form'"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                </svg>
+                <span>Form</span>
+              </button>
+
+              <button
+                type="button"
+                class="invoice-tab-btn"
+                [class.active]="activeInvoiceTab === 'json'"
+                (click)="activeInvoiceTab = 'json'"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="16 18 22 12 16 6"></polyline>
+                  <polyline points="8 6 2 12 8 18"></polyline>
+                </svg>
+                <span>JSON</span>
+              </button>
+
+              <button
+                type="button"
+                class="invoice-tab-btn"
+                [class.active]="activeInvoiceTab === 'raw'"
+                (click)="activeInvoiceTab = 'raw'"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="17" y1="10" x2="3" y2="10"></line>
+                  <line x1="21" y1="6" x2="3" y2="6"></line>
+                  <line x1="21" y1="14" x2="3" y2="14"></line>
+                  <line x1="17" y1="18" x2="3" y2="18"></line>
+                </svg>
+                <span>Raw OCR</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 2. Scrollable Body Content -->
+          <div class="sidebar-body">
+            @if (isExtractingInvoice || isOcrRunning) {
+              <div class="invoice-extracting-state">
+                <div class="extracting-spinner-wrap">
+                  <div class="extracting-halo"></div>
+                  <div class="extracting-spinner"></div>
+                  <svg
+                    class="extracting-ai-icon"
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#ec1f28"
+                    stroke-width="2.5"
+                  >
+                    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
+                  </svg>
+                </div>
+
+                <h4 class="extracting-title">
+                  {{ ocrProgress === 100 ? 'Finalizing Invoice Data...' : 'AI Vision Extraction in Progress' }}
+                </h4>
+
+                <p class="extracting-desc">
+                  {{ ocrStatusText || 'Analyzing document with Gemini Vision AI...' }}
+                </p>
+
+                <div class="extracting-progress-track">
+                  <div
+                    class="extracting-progress-bar"
+                    [style.width.%]="ocrProgress"
+                  ></div>
+                </div>
+                <span class="ocr-progress-percent">{{ ocrProgress }}%</span>
+
+                <div class="extracting-steps-row">
+                  <span class="step-pill" [class.active]="ocrProgress >= 15">
+                    1. Scan
+                  </span>
+                  <span class="step-arrow">→</span>
+                  <span class="step-pill" [class.active]="ocrProgress >= 50">
+                    2. Extract
+                  </span>
+                  <span class="step-arrow">→</span>
+                  <span class="step-pill" [class.active]="ocrProgress >= 85">
+                    3. Verify
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  class="btn-cancel-extract"
+                  (click)="cancelExtraction()"
+                >
+                  Cancel Extraction
+                </button>
+              </div>
+            } @else if (ocrError) {
+              <div class="ocr-error-box">
+                <svg
+                  width="30"
+                  height="30"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#e11d48"
+                  stroke-width="2"
+                >
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                <p class="ocr-error-text">{{ ocrError }}</p>
+                <button type="button" class="btn-confirm" (click)="runOcr()">
+                  Retry OCR
+                </button>
+              </div>
+            } @else {
+              <!-- TAB 1: FORM VIEW -->
+              @if (activeInvoiceTab === 'form') {
+                @if (extractedInvoiceJson) {
+                  <div class="invoice-tab-content tab-form">
+                    <!-- Invoice Information Card -->
+                    <div class="invoice-form-section">
+                      <h4 class="form-section-title">Document & Vendor Information</h4>
+                      <div class="form-grid-sidebar">
+                        <div class="form-field-group col-span-2">
+                          <label class="form-field-label">Vendor Name</label>
+                          <input
+                            type="text"
+                            class="form-field-input"
+                            [(ngModel)]="extractedInvoiceJson.vendorName"
+                            placeholder="Vendor / Supplier Name"
+                          />
+                        </div>
+
+                        <div class="form-field-group">
+                          <label class="form-field-label">Vendor Phone</label>
+                          <input
+                            type="text"
+                            class="form-field-input"
+                            [(ngModel)]="extractedInvoiceJson.vendorPhone"
+                            placeholder="+1 (555) 000-0000"
+                          />
+                        </div>
+
+                        <div class="form-field-group">
+                          <label class="form-field-label">Tax / VAT ID</label>
+                          <input
+                            type="text"
+                            class="form-field-input"
+                            [(ngModel)]="extractedInvoiceJson.vendorTaxId"
+                            placeholder="e.g. VAT12345678"
+                          />
+                        </div>
+
+                        <div class="form-field-group col-span-2">
+                          <label class="form-field-label">Vendor Address</label>
+                          <input
+                            type="text"
+                            class="form-field-input"
+                            [(ngModel)]="extractedInvoiceJson.vendorAddress"
+                            placeholder="Street, City, Postal Code, Country"
+                          />
+                        </div>
+
+                        <div class="form-field-group">
+                          <label class="form-field-label">Invoice / Doc No</label>
+                          <input
+                            type="text"
+                            class="form-field-input"
+                            [(ngModel)]="extractedInvoiceJson.invoiceNumber"
+                            placeholder="e.g. INV-2026-001"
+                          />
+                        </div>
+
+                        <div class="form-field-group">
+                          <label class="form-field-label">PO Number</label>
+                          <input
+                            type="text"
+                            class="form-field-input"
+                            [(ngModel)]="extractedInvoiceJson.poNumber"
+                            placeholder="e.g. PO-2026-001"
+                          />
+                        </div>
+
+                        <div class="form-field-group">
+                          <label class="form-field-label">Invoice Date</label>
+                          <input
+                            type="text"
+                            class="form-field-input"
+                            [(ngModel)]="extractedInvoiceJson.invoiceDate"
+                            placeholder="YYYY-MM-DD"
+                          />
+                        </div>
+
+                        <div class="form-field-group">
+                          <label class="form-field-label">Due Date</label>
+                          <input
+                            type="text"
+                            class="form-field-input"
+                            [(ngModel)]="extractedInvoiceJson.dueDate"
+                            placeholder="YYYY-MM-DD"
+                          />
+                        </div>
+
+                        <div class="form-field-group">
+                          <label class="form-field-label">Payment Terms</label>
+                          <input
+                            type="text"
+                            class="form-field-input"
+                            [(ngModel)]="extractedInvoiceJson.paymentTerms"
+                            placeholder="e.g. Net 30, Due on Receipt"
+                          />
+                        </div>
+
+                        <div class="form-field-group">
+                          <label class="form-field-label">Currency</label>
+                          <select
+                            class="form-field-select"
+                            [(ngModel)]="extractedInvoiceJson.currency"
+                          >
+                            <option value="USD">USD ($)</option>
+                            <option value="KHR">KHR (៛)</option>
+                            <option value="EUR">EUR (€)</option>
+                            <option value="GBP">GBP (£)</option>
+                          </select>
+                        </div>
+
+                        <div class="form-field-group col-span-2">
+                          <label class="form-field-label">Billed To (Customer / Recipient)</label>
+                          <input
+                            type="text"
+                            class="form-field-input"
+                            [(ngModel)]="extractedInvoiceJson.billedTo"
+                            placeholder="Recipient / Company Name"
+                          />
+                        </div>
+
+                        <div class="form-field-group col-span-2">
+                          <label class="form-field-label">Billing / Delivery Address</label>
+                          <input
+                            type="text"
+                            class="form-field-input"
+                            [(ngModel)]="extractedInvoiceJson.billedAddress"
+                            placeholder="Customer / Delivery Address"
+                          />
+                        </div>
+
+                        <div class="form-field-group col-span-2">
+                          <label class="form-field-label">Notes / Remarks</label>
+                          <textarea
+                            class="form-field-textarea"
+                            rows="2"
+                            [(ngModel)]="extractedInvoiceJson.notes"
+                            placeholder="Additional memo, delivery instructions, or notes..."
+                          ></textarea>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Line Items Section -->
+                    <div class="invoice-form-section">
+                      <div class="section-title-row">
+                        <h4 class="form-section-title">
+                          Line Items ({{ (extractedInvoiceJson?.items?.length) || 0 }})
+                        </h4>
+                        <button
+                          type="button"
+                          class="btn-add-line-item"
+                          (click)="addLineItem()"
+                          title="Add a new item row"
+                        >
+                          + Add Item
+                        </button>
+                      </div>
+
+                      <div class="line-items-table-wrap">
+                        <table class="line-items-table">
+                          <thead>
+                            <tr>
+                              <th style="width: 32px">#</th>
+                              <th style="width: 100px">Item / SKU</th>
+                              <th>Description</th>
+                              <th style="width: 60px" class="col-right">Qty</th>
+                              <th style="width: 82px" class="col-right">Price</th>
+                              <th style="width: 88px" class="col-right">Total</th>
+                              <th style="width: 30px"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            @for (
+                              item of (extractedInvoiceJson?.items || []);
+                              track item.itemNo || $index;
+                              let idx = $index
+                            ) {
+                              <tr>
+                                <td class="col-center text-muted">{{ item.itemNo }}</td>
+                                <td>
+                                  <input
+                                    type="text"
+                                    class="tbl-input"
+                                    [(ngModel)]="item.itemCode"
+                                    placeholder="Code / SKU"
+                                  />
+                                </td>
+                                <td>
+                                  <input
+                                    type="text"
+                                    class="tbl-input"
+                                    [(ngModel)]="item.description"
+                                    placeholder="Description"
+                                  />
+                                </td>
+                                <td>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    class="tbl-input col-right"
+                                    [(ngModel)]="item.quantity"
+                                    (input)="onItemChange(item)"
+                                  />
+                                </td>
+                                <td>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    class="tbl-input col-right"
+                                    [(ngModel)]="item.unitPrice"
+                                    (input)="onItemChange(item)"
+                                  />
+                                </td>
+                                <td class="col-right tbl-total-cell">
+                                  {{ item.total | number: '1.2-2' }}
+                                </td>
+                                <td class="col-center">
+                                  <button
+                                    type="button"
+                                    class="tbl-delete-btn"
+                                    (click)="removeLineItem(idx)"
+                                    title="Remove line item"
+                                  >
+                                    ✕
+                                  </button>
+                                </td>
+                              </tr>
+                            }
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <!-- Totals & Summary Breakdown -->
+                    <div class="invoice-totals-grid">
+                      <div class="totals-left-notes">
+                        <span class="ocr-status-caption">
+                          🔍 Verified via Gemini Vision AI
+                        </span>
+                      </div>
+
+                      <div class="totals-right-breakdown">
+                        <div class="total-row">
+                          <span class="total-label">Subtotal</span>
+                          <div class="total-input-wrap">
+                            <span class="currency-prefix">{{
+                              extractedInvoiceJson.currency
+                            }}</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              class="total-input"
+                              [(ngModel)]="extractedInvoiceJson.subtotal"
+                              (input)="onSubtotalChange()"
+                            />
+                          </div>
+                        </div>
+
+                        <div class="total-row">
+                          <span class="total-label">Tax Rate</span>
+                          <div class="total-input-wrap">
+                            <input
+                              type="number"
+                              step="0.1"
+                              class="total-input"
+                              [(ngModel)]="extractedInvoiceJson.taxRate"
+                              (input)="onTaxRateChange()"
+                              placeholder="0"
+                            />
+                            <span class="currency-suffix">%</span>
+                          </div>
+                        </div>
+
+                        <div class="total-row">
+                          <span class="total-label">Tax Amount</span>
+                          <div class="total-input-wrap">
+                            <span class="currency-prefix">{{
+                              extractedInvoiceJson.currency
+                            }}</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              class="total-input"
+                              [(ngModel)]="extractedInvoiceJson.taxAmount"
+                              (input)="onTaxAmountChange()"
+                              placeholder="0.00"
+                            />
+                          </div>
+                        </div>
+
+                        <div class="total-row grand-total-row">
+                          <span class="grand-total-label">Grand Total</span>
+                          <div class="total-input-wrap">
+                            <span class="currency-prefix grand-currency-prefix">{{
+                              extractedInvoiceJson.currency
+                            }}</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              class="total-input grand-total-input"
+                              [(ngModel)]="extractedInvoiceJson.grandTotal"
+                              (input)="onGrandTotalChange()"
+                              placeholder="0.00"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                } @else {
+                  <div class="empty-tab-state">
+                    <p>No invoice form data available. Click "Re-extract" to analyze document.</p>
+                    <button type="button" class="btn-confirm" (click)="runOcr()">Run OCR Recognition</button>
+                  </div>
+                }
+              }
+
+              <!-- TAB 2: JSON VIEW -->
+              @if (activeInvoiceTab === 'json') {
+                @if (extractedInvoiceJson) {
+                  <div class="invoice-tab-content tab-json">
+                    <div class="json-actions-toolbar">
+                      <div class="json-meta-info">
+                        <span class="json-doc-tag">AP_INVOICE</span>
+                        <span class="json-lines-tag"
+                          >{{ (extractedInvoiceJson?.items?.length) || 0 }} Items</span
+                        >
+                        <span class="json-currency-tag"
+                          >{{ extractedInvoiceJson?.currency || 'USD' }} {{ (extractedInvoiceJson?.grandTotal || 0) | number:'1.2-2' }}</span
+                        >
+                      </div>
+
+                      <div class="json-btn-group">
+                        <button
+                          type="button"
+                          class="btn-json-action"
+                          [class.copied]="copiedInvoiceJson"
+                          (click)="copyInvoiceJson()"
+                          title="Copy formatted JSON to clipboard"
+                        >
+                          @if (copiedInvoiceJson) {
+                            <span>✓ Copied!</span>
+                          } @else {
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                            >
+                              <rect
+                                x="9"
+                                y="9"
+                                width="13"
+                                height="13"
+                                rx="2"
+                                ry="2"
+                              ></rect>
+                              <path
+                                d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                              ></path>
+                            </svg>
+                            <span>Copy JSON</span>
+                          }
+                        </button>
+
+                        <button
+                          type="button"
+                          class="btn-json-action"
+                          (click)="downloadInvoiceJson()"
+                          title="Download as .json file"
+                        >
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                          >
+                            <path
+                              d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"
+                            ></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                          </svg>
+                          <span>Download .json</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div class="json-code-viewer-wrap">
+                      <pre class="json-code-block"><code>{{ formattedInvoiceJson }}</code></pre>
+                    </div>
+                  </div>
+                } @else {
+                  <div class="empty-tab-state">
+                    <p>No invoice JSON extracted yet. Click "Re-extract" or inspect "Raw OCR Text".</p>
+                    <button type="button" class="btn-confirm" (click)="runOcr()">Run OCR Recognition</button>
+                  </div>
+                }
+              }
+
+              <!-- TAB 3: RAW OCR TEXT VIEW -->
+              @if (activeInvoiceTab === 'raw') {
+                <div class="invoice-tab-content tab-raw">
+                  <div class="ocr-meta-bar">
+                    <div class="ocr-stats">
+                      <span class="stat-pill">{{ ocrWordCount }} words</span>
+                      <span class="stat-pill">{{ ocrCharCount }} chars</span>
+                    </div>
+
+                    <div class="raw-actions-right">
+                      <button
+                        type="button"
+                        class="btn-rescan-inline"
+                        (click)="reParseOcrTextToJson()"
+                        title="Update JSON and form fields from edited text"
+                      >
+                        <svg
+                          width="13"
+                          height="13"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2.2"
+                          stroke-linecap="round"
+                        >
+                          <path
+                            d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"
+                          />
+                        </svg>
+                        <span>Update Form</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <textarea
+                    class="ocr-textarea"
+                    [value]="ocrExtractedText"
+                    (input)="onOcrTextInput($event)"
+                    placeholder="Extracted Khmer and English text will appear here..."
+                  ></textarea>
+
+                  <div class="ocr-tip-box">
+                    💡
+                    <span
+                      >Tip: Edit any text above and click <b>"Update Form"</b> to sync changes into the AP Invoice form.</span
+                    >
+                  </div>
+
+                  <div class="raw-actions-toolbar">
+                    <button
+                      type="button"
+                      class="btn-raw-action"
+                      [class.copied]="ocrCopied"
+                      (click)="copyOcrText()"
+                    >
+                      @if (ocrCopied) {
+                        <span>✓ Copied Text!</span>
+                      } @else {
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                        >
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                          <path
+                            d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                          ></path>
+                        </svg>
+                        <span>Copy Text</span>
+                      }
+                    </button>
+
+                    <button
+                      type="button"
+                      class="btn-raw-action"
+                      (click)="exportOcrTxt()"
+                      title="Export as UTF-8 text file with BOM for Khmer character support"
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                      </svg>
+                      <span>Export .TXT</span>
+                    </button>
+                  </div>
+                </div>
+              }
+            }
+          </div>
+
+          <!-- 3. Sticky Footer Actions (Insert into AP Invoice) -->
+          <div class="sidebar-footer">
+            <div class="footer-left-info">
+              <span class="footer-status-tag">
+                <span class="status-dot-active"></span>
+                <span class="footer-vendor-name">{{ extractedInvoiceJson?.vendorName || 'Document' }}</span>
+                <span>•</span>
+                <span class="footer-total-val"
+                  >{{ extractedInvoiceJson?.currency || 'USD' }}
+                  {{ (extractedInvoiceJson?.grandTotal || 0) | number: '1.2-2' }}</span
+                >
+              </span>
+            </div>
+
+            <div class="footer-right-buttons">
+              <button
+                type="button"
+                class="btn-invoice-cancel"
+                (click)="closeInvoiceJsonModal()"
+              >
+                Close
+              </button>
+
+              <button
+                type="button"
+                class="btn-insert-ap-invoice"
+                [disabled]="isSubmittingApInvoice || !extractedInvoiceJson"
+                (click)="submitApInvoiceToDatabase()"
+              >
+                @if (isSubmittingApInvoice) {
+                  <div class="btn-spinner"></div>
+                  <span>Saving...</span>
+                } @else {
+                  <svg
+                    width="15"
+                    height="15"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                  >
+                    <path
+                      d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"
+                    ></path>
+                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                    <polyline points="7 3 7 8 15 8"></polyline>
+                  </svg>
+                  <span>Insert to AP Invoice</span>
+                }
+              </button>
+            </div>
+          </div>
+        </aside>
     </div>
   </div>
 
@@ -1884,795 +2638,5 @@
     </div>
   }
 
-  <!-- ============================================================== -->
-  <!-- 5. AP INVOICE OCR-TO-JSON & DATABASE INSERTION MODAL           -->
-  <!-- ============================================================== -->
-  @if (showInvoiceJsonModal) {
-    <div class="modal-backdrop ap-invoice-backdrop" (click)="closeInvoiceJsonModal()">
-      <div class="modal-dialog ap-invoice-dialog" (click)="$event.stopPropagation()">
-        <!-- Close Button -->
-        <button
-          type="button"
-          class="invoice-modal-close"
-          (click)="closeInvoiceJsonModal()"
-          title="Close Modal"
-          aria-label="Close"
-        >
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            stroke-linecap="round"
-          >
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-
-        <!-- Modal Header -->
-        <div class="invoice-modal-header">
-          <div class="invoice-badge-row">
-            <span class="invoice-brand-badge">FieldBi AP Vision</span>
-            <span class="invoice-status-pill">
-              @if (isExtractingInvoice || isOcrRunning) {
-                <span class="status-pulse-dot"></span>
-                <span>{{ ocrProgress }}% OCR</span>
-              } @else {
-                <span class="status-dot-green"></span>
-                <span>Verified Data</span>
-              }
-            </span>
-            <span class="invoice-page-pill"
-              >Page {{ activePageIndex + 1 }} of {{ pages.length }}</span
-            >
-          </div>
-
-          <h3 class="invoice-modal-title">AP Invoice & Text Recognition</h3>
-          <p class="invoice-modal-subtitle">
-            Extract and verify invoice data in Khmer and English. Review JSON, edit form fields, or inspect raw OCR text before inserting into database.
-          </p>
-
-
-          <!-- 3-Tab Navigation Bar -->
-          <div class="invoice-tab-nav">
-            <button
-              type="button"
-              class="invoice-tab-btn"
-              [class.active]="activeInvoiceTab === 'json'"
-              (click)="activeInvoiceTab = 'json'"
-            >
-              <svg
-                width="15"
-                height="15"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <polyline points="16 18 22 12 16 6"></polyline>
-                <polyline points="8 6 2 12 8 18"></polyline>
-              </svg>
-              <span>AP Invoice JSON</span>
-            </button>
-
-            <button
-              type="button"
-              class="invoice-tab-btn"
-              [class.active]="activeInvoiceTab === 'form'"
-              (click)="activeInvoiceTab = 'form'"
-            >
-              <svg
-                width="15"
-                height="15"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path
-                  d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
-                ></path>
-                <path
-                  d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"
-                ></path>
-              </svg>
-              <span>AP Invoice Form</span>
-            </button>
-
-            <button
-              type="button"
-              class="invoice-tab-btn"
-              [class.active]="activeInvoiceTab === 'raw'"
-              (click)="activeInvoiceTab = 'raw'"
-            >
-              <svg
-                width="15"
-                height="15"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <line x1="17" y1="10" x2="3" y2="10"></line>
-                <line x1="21" y1="6" x2="3" y2="6"></line>
-                <line x1="21" y1="14" x2="3" y2="14"></line>
-                <line x1="17" y1="18" x2="3" y2="18"></line>
-              </svg>
-              <span>Raw OCR Text</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Modal Body Content -->
-        <div class="invoice-modal-body">
-          @if (isExtractingInvoice || isOcrRunning) {
-            <div class="invoice-extracting-state">
-              <div class="extracting-spinner-wrap">
-                <div class="extracting-halo"></div>
-                <div class="extracting-spinner"></div>
-                <svg
-                  class="extracting-ai-icon"
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#ec1f28"
-                  stroke-width="2.5"
-                >
-                  <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
-                </svg>
-              </div>
-
-              <h4 class="extracting-title">
-                {{ ocrProgress === 100 ? 'Finalizing Invoice Data...' : 'AI Vision Extraction in Progress' }}
-              </h4>
-
-              <p class="extracting-desc">
-                {{ ocrStatusText || 'Analyzing document with Gemini Vision AI...' }}
-              </p>
-
-              <div class="extracting-progress-track">
-                <div
-                  class="extracting-progress-bar"
-                  [style.width.%]="ocrProgress"
-                ></div>
-              </div>
-              <span class="ocr-progress-percent">{{ ocrProgress }}%</span>
-
-              <div class="extracting-steps-row">
-                <span class="step-pill" [class.active]="ocrProgress >= 15">
-                  1. Scan Image
-                </span>
-                <span class="step-arrow">→</span>
-                <span class="step-pill" [class.active]="ocrProgress >= 50">
-                  2. Extract Fields
-                </span>
-                <span class="step-arrow">→</span>
-                <span class="step-pill" [class.active]="ocrProgress >= 85">
-                  3. Format & Verify
-                </span>
-              </div>
-
-              <button
-                type="button"
-                class="btn-cancel-extract"
-                (click)="cancelExtraction()"
-              >
-                Cancel Extraction
-              </button>
-            </div>
-          } @else if (ocrError) {
-            <div class="ocr-error-box">
-              <svg
-                width="30"
-                height="30"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#e11d48"
-                stroke-width="2"
-              >
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="8" x2="12" y2="12"></line>
-                <line x1="12" y1="16" x2="12.01" y2="16"></line>
-              </svg>
-              <p class="ocr-error-text">{{ ocrError }}</p>
-              <button type="button" class="btn-confirm" (click)="runOcr()">
-                Retry OCR
-              </button>
-            </div>
-          } @else {
-            <!-- ============================================== -->
-            <!-- TAB 1: RAW JSON OUTPUT VIEW                    -->
-            <!-- ============================================== -->
-            @if (activeInvoiceTab === 'json') {
-              @if (extractedInvoiceJson) {
-                <div class="invoice-tab-content tab-json">
-                  <div class="json-actions-toolbar">
-                    <div class="json-meta-info">
-                      <span class="json-doc-tag">AP_INVOICE</span>
-                      <span class="json-lines-tag"
-                        >{{ extractedInvoiceJson.items.length }} Items</span
-                      >
-                      <span class="json-currency-tag"
-                        >{{ extractedInvoiceJson.currency }} {{ extractedInvoiceJson.grandTotal | number:'1.2-2' }}</span
-                      >
-                    </div>
-
-                    <div class="json-btn-group">
-                      <button
-                        type="button"
-                        class="btn-json-action"
-                        [class.copied]="copiedInvoiceJson"
-                        (click)="copyInvoiceJson()"
-                        title="Copy formatted JSON to clipboard"
-                      >
-                        @if (copiedInvoiceJson) {
-                          <span>✓ Copied!</span>
-                        } @else {
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                          >
-                            <rect
-                              x="9"
-                              y="9"
-                              width="13"
-                              height="13"
-                              rx="2"
-                              ry="2"
-                            ></rect>
-                            <path
-                              d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
-                            ></path>
-                          </svg>
-                          <span>Copy JSON</span>
-                        }
-                      </button>
-
-                      <button
-                        type="button"
-                        class="btn-json-action"
-                        (click)="downloadInvoiceJson()"
-                        title="Download as .json file"
-                      >
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                        >
-                          <path
-                            d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"
-                          ></path>
-                          <polyline points="7 10 12 15 17 10"></polyline>
-                          <line x1="12" y1="15" x2="12" y2="3"></line>
-                        </svg>
-                        <span>Download .json</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        class="btn-json-action secondary"
-                        (click)="runOcr()"
-                        title="Re-run extraction"
-                      >
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                        >
-                          <polyline points="23 4 23 10 17 10"></polyline>
-                          <polyline points="1 20 1 14 7 14"></polyline>
-                          <path
-                            d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
-                          ></path>
-                        </svg>
-                        <span>Re-extract</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div class="json-code-viewer-wrap">
-                    <pre class="json-code-block"><code>{{ formattedInvoiceJson }}</code></pre>
-                  </div>
-                </div>
-              } @else {
-                <div class="empty-tab-state">
-                  <p>No invoice JSON extracted yet. Click "Re-extract" or inspect "Raw OCR Text".</p>
-                  <button type="button" class="btn-confirm" (click)="runOcr()">Run OCR Recognition</button>
-                </div>
-              }
-            }
-
-            <!-- ============================================== -->
-            <!-- TAB 2: AP INVOICE EDITABLE FORM PREVIEW        -->
-            <!-- ============================================== -->
-            @if (activeInvoiceTab === 'form') {
-              @if (extractedInvoiceJson) {
-                <div class="invoice-tab-content tab-form">
-                  <!-- Header Info Form Grid -->
-                  <div class="invoice-form-section">
-                    <h4 class="form-section-title">Invoice Information</h4>
-                    <div class="form-grid-4">
-                      <div class="form-field-group">
-                        <label class="form-field-label">Vendor Name</label>
-                        <input
-                          type="text"
-                          class="form-field-input"
-                          [(ngModel)]="extractedInvoiceJson.vendorName"
-                          placeholder="Vendor / Supplier Name"
-                        />
-                      </div>
-
-                      <div class="form-field-group">
-                        <label class="form-field-label">Invoice No</label>
-                        <input
-                          type="text"
-                          class="form-field-input"
-                          [(ngModel)]="extractedInvoiceJson.invoiceNumber"
-                          placeholder="e.g. INV-2026-001"
-                        />
-                      </div>
-
-                      <div class="form-field-group">
-                        <label class="form-field-label">Invoice Date</label>
-                        <input
-                          type="text"
-                          class="form-field-input"
-                          [(ngModel)]="extractedInvoiceJson.invoiceDate"
-                          placeholder="YYYY-MM-DD"
-                        />
-                      </div>
-
-                      <div class="form-field-group">
-                        <label class="form-field-label">Due Date</label>
-                        <input
-                          type="text"
-                          class="form-field-input"
-                          [(ngModel)]="extractedInvoiceJson.dueDate"
-                          placeholder="YYYY-MM-DD"
-                        />
-                      </div>
-
-                      <div class="form-field-group">
-                        <label class="form-field-label">PO Number</label>
-                        <input
-                          type="text"
-                          class="form-field-input"
-                          [(ngModel)]="extractedInvoiceJson.poNumber"
-                          placeholder="e.g. PO-2026-001"
-                        />
-                      </div>
-
-                      <div class="form-field-group">
-                        <label class="form-field-label">Payment Terms</label>
-                        <input
-                          type="text"
-                          class="form-field-input"
-                          [(ngModel)]="extractedInvoiceJson.paymentTerms"
-                          placeholder="e.g. Net 30, Due on Receipt"
-                        />
-                      </div>
-
-                      <div class="form-field-group">
-                        <label class="form-field-label">Billed To</label>
-                        <input
-                          type="text"
-                          class="form-field-input"
-                          [(ngModel)]="extractedInvoiceJson.billedTo"
-                          placeholder="Recipient / Company Name"
-                        />
-                      </div>
-
-                      <div class="form-field-group">
-                        <label class="form-field-label">Currency</label>
-                        <select
-                          class="form-field-select"
-                          [(ngModel)]="extractedInvoiceJson.currency"
-                        >
-                          <option value="USD">USD ($)</option>
-                          <option value="KHR">KHR (៛)</option>
-                          <option value="EUR">EUR (€)</option>
-                          <option value="GBP">GBP (£)</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- Line Items Table -->
-                  <div class="invoice-form-section">
-                    <div class="section-title-row">
-                      <h4 class="form-section-title">
-                        Line Items ({{ extractedInvoiceJson.items.length }})
-                      </h4>
-                      <button
-                        type="button"
-                        class="btn-add-line-item"
-                        (click)="addLineItem()"
-                        title="Add a new item row"
-                      >
-                        + Add Item
-                      </button>
-                    </div>
-
-                    <div class="line-items-table-wrap">
-                      <table class="line-items-table">
-                        <thead>
-                          <tr>
-                            <th style="width: 42px">#</th>
-                            <th style="width: 140px">Item Code / SKU</th>
-                            <th>Description</th>
-                            <th style="width: 78px" class="col-right">Qty</th>
-                            <th style="width: 104px" class="col-right">Unit Price</th>
-                            <th style="width: 110px" class="col-right">Total</th>
-                            <th style="width: 38px"></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          @for (
-                            item of extractedInvoiceJson.items;
-                            track item.itemNo;
-                            let idx = $index
-                          ) {
-                            <tr>
-                              <td class="col-center text-muted">{{ item.itemNo }}</td>
-                              <td>
-                                <input
-                                  type="text"
-                                  class="tbl-input"
-                                  [(ngModel)]="item.itemCode"
-                                  placeholder="Code / SKU"
-                                />
-                              </td>
-                              <td>
-                                <input
-                                  type="text"
-                                  class="tbl-input"
-                                  [(ngModel)]="item.description"
-                                  placeholder="Item description"
-                                />
-                              </td>
-                              <td>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  class="tbl-input col-right"
-                                  [(ngModel)]="item.quantity"
-                                  (input)="onItemChange(item)"
-                                />
-                              </td>
-                              <td>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  class="tbl-input col-right"
-                                  [(ngModel)]="item.unitPrice"
-                                  (input)="onItemChange(item)"
-                                />
-                              </td>
-                              <td class="col-right tbl-total-cell">
-                                {{ extractedInvoiceJson.currency }}
-                                {{ item.total | number: '1.2-2' }}
-                              </td>
-                              <td class="col-center">
-                                <button
-                                  type="button"
-                                  class="tbl-delete-btn"
-                                  (click)="removeLineItem(idx)"
-                                  title="Remove line item"
-                                >
-                                  ✕
-                                </button>
-                              </td>
-                            </tr>
-                          }
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  <!-- Totals & Summary Breakdown -->
-                  <div class="invoice-totals-grid">
-                    <div class="totals-left-notes">
-                      <span class="ocr-status-caption">
-                        🔍 Values extracted automatically via AI Vision.
-                      </span>
-                      <button
-                        type="button"
-                        class="btn-insert-ap-inline"
-                        [disabled]="isSubmittingApInvoice || !extractedInvoiceJson"
-                        (click)="submitApInvoiceToDatabase()"
-                      >
-                        @if (isSubmittingApInvoice) {
-                          <div class="btn-spinner"></div>
-                          <span>Inserting into FieldBi...</span>
-                        } @else {
-                          <svg
-                            width="15"
-                            height="15"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2.5"
-                          >
-                            <path
-                              d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"
-                            ></path>
-                            <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                            <polyline points="7 3 7 8 15 8"></polyline>
-                          </svg>
-                          <span>Insert to AP Invoice</span>
-                        }
-                      </button>
-                    </div>
-
-                    <div class="totals-right-breakdown">
-                      <div class="total-row">
-                        <span class="total-label">Subtotal</span>
-                        <div class="total-input-wrap">
-                          <span class="currency-prefix">{{
-                            extractedInvoiceJson.currency
-                          }}</span>
-                          <input
-                            type="number"
-                            step="0.01"
-                            class="total-input"
-                            [(ngModel)]="extractedInvoiceJson.subtotal"
-                            (input)="onSubtotalChange()"
-                          />
-                        </div>
-                      </div>
-
-                      <div class="total-row">
-                        <span class="total-label">Tax Rate / VAT</span>
-                        <div class="total-input-wrap">
-                          <input
-                            type="number"
-                            step="0.1"
-                            class="total-input"
-                            [(ngModel)]="extractedInvoiceJson.taxRate"
-                            (input)="onTaxRateChange()"
-                            placeholder="0"
-                          />
-                          <span class="currency-suffix">%</span>
-                        </div>
-                      </div>
-
-                      <div class="total-row">
-                        <span class="total-label">Tax Amount</span>
-                        <div class="total-input-wrap">
-                          <span class="currency-prefix">{{
-                            extractedInvoiceJson.currency
-                          }}</span>
-                          <input
-                            type="number"
-                            step="0.01"
-                            class="total-input"
-                            [(ngModel)]="extractedInvoiceJson.taxAmount"
-                            (input)="onTaxAmountChange()"
-                            placeholder="0.00"
-                          />
-                        </div>
-                      </div>
-
-                      <div class="total-row grand-total-row">
-                        <span class="grand-total-label">Grand Total</span>
-                        <div class="total-input-wrap">
-                          <span class="currency-prefix grand-currency-prefix">{{
-                            extractedInvoiceJson.currency
-                          }}</span>
-                          <input
-                            type="number"
-                            step="0.01"
-                            class="total-input grand-total-input"
-                            [(ngModel)]="extractedInvoiceJson.grandTotal"
-                            (input)="onGrandTotalChange()"
-                            placeholder="0.00"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              } @else {
-                <div class="empty-tab-state">
-                  <p>No invoice form data available. Click "Re-extract" to analyze document.</p>
-                  <button type="button" class="btn-confirm" (click)="runOcr()">Run OCR Recognition</button>
-                </div>
-              }
-            }
-
-            <!-- ============================================== -->
-            <!-- TAB 3: RAW OCR EXTRACTED TEXT                  -->
-            <!-- ============================================== -->
-            @if (activeInvoiceTab === 'raw') {
-              <div class="invoice-tab-content tab-raw">
-                <div class="ocr-meta-bar">
-                  <div class="ocr-stats">
-                    <span class="stat-pill">{{ ocrWordCount }} words</span>
-                    <span class="stat-pill">{{ ocrCharCount }} chars</span>
-                  </div>
-
-                  <div class="raw-actions-right">
-                    <button
-                      type="button"
-                      class="btn-rescan-inline"
-                      (click)="reParseOcrTextToJson()"
-                      title="Update JSON and form fields from edited text"
-                    >
-                      <svg
-                        width="13"
-                        height="13"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2.2"
-                        stroke-linecap="round"
-                      >
-                        <path
-                          d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"
-                        />
-                      </svg>
-                      <span>Update JSON from Text</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      class="btn-rescan-inline"
-                      (click)="extractAndConvertApInvoice(true)"
-                      title="Re-scan document with Vision AI"
-                    >
-                      <svg
-                        width="13"
-                        height="13"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2.2"
-                        stroke-linecap="round"
-                      >
-                        <path
-                          d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"
-                        />
-                      </svg>
-                      <span>Re-scan Image</span>
-                    </button>
-                  </div>
-                </div>
-
-                <textarea
-                  class="ocr-textarea"
-                  [value]="ocrExtractedText"
-                  (input)="onOcrTextInput($event)"
-                  placeholder="Extracted Khmer and English text will appear here..."
-                ></textarea>
-
-                <div class="ocr-tip-box">
-                  💡
-                  <span
-                    >Tip: Table rows are preserved using <b>PSM 6</b>. Edit any text above and click <b>"Update JSON from Text"</b> to sync changes into the AP Invoice form.</span
-                  >
-                </div>
-
-                <div class="raw-actions-toolbar">
-                  <button
-                    type="button"
-                    class="btn-raw-action"
-                    [class.copied]="ocrCopied"
-                    (click)="copyOcrText()"
-                  >
-                    @if (ocrCopied) {
-                      <span>✓ Copied Text!</span>
-                    } @else {
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                      >
-                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                        <path
-                          d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
-                        ></path>
-                      </svg>
-                      <span>Copy Text</span>
-                    }
-                  </button>
-
-                  <button
-                    type="button"
-                    class="btn-raw-action"
-                    (click)="exportOcrTxt()"
-                    title="Export as UTF-8 text file with BOM for Khmer character support"
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                      <polyline points="7 10 12 15 17 10"></polyline>
-                      <line x1="12" y1="15" x2="12" y2="3"></line>
-                    </svg>
-                    <span>Export .TXT (UTF-8 BOM)</span>
-                  </button>
-                </div>
-              </div>
-            }
-          }
-        </div>
-
-        <!-- Modal Footer Actions (Step 2: Insert into AP Invoice) -->
-        <div class="invoice-modal-footer">
-          <div class="footer-left-info">
-            <span class="footer-status-tag">
-              <span class="status-dot-active"></span>
-              <span class="footer-vendor-name">{{ extractedInvoiceJson?.vendorName || 'Document' }}</span>
-              <span>•</span>
-              <span class="footer-total-val"
-                >{{ extractedInvoiceJson?.currency || 'USD' }}
-                {{ (extractedInvoiceJson?.grandTotal || 0) | number: '1.2-2' }}</span
-              >
-            </span>
-          </div>
-
-          <div class="footer-right-buttons">
-            <button
-              type="button"
-              class="btn-invoice-cancel"
-              (click)="closeInvoiceJsonModal()"
-            >
-              Close
-            </button>
-
-            <button
-              type="button"
-              class="btn-insert-ap-invoice"
-              [disabled]="isSubmittingApInvoice || !extractedInvoiceJson"
-              (click)="submitApInvoiceToDatabase()"
-            >
-              @if (isSubmittingApInvoice) {
-                <div class="btn-spinner"></div>
-                <span>Inserting into FieldBi...</span>
-              } @else {
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.5"
-                >
-                  <path
-                    d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"
-                  ></path>
-                  <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                  <polyline points="7 3 7 8 15 8"></polyline>
-                </svg>
-                <span>Insert to AP Invoice</span>
-              }
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  }
 </ion-content>
+

@@ -21,7 +21,10 @@ export class GeminiInvoiceService {
         localStorage.getItem('gemini_api_key');
       if (stored && stored.trim().length > 0) return stored.trim();
     }
-    if (environment.geminiApiKey && environment.geminiApiKey.trim().length > 0) {
+    if (
+      environment.geminiApiKey &&
+      environment.geminiApiKey.trim().length > 0
+    ) {
       return environment.geminiApiKey.trim();
     }
     try {
@@ -99,7 +102,10 @@ export class GeminiInvoiceService {
           },
         },
         invoiceNumber: { type: Type.STRING },
-        poNumber: { type: Type.STRING, description: 'Purchase Order # or PO Number' },
+        poNumber: {
+          type: Type.STRING,
+          description: 'Purchase Order # or PO Number',
+        },
         paymentTerms: {
           type: Type.STRING,
           description: 'Payment terms such as Net 30, Due on Receipt, Cash',
@@ -107,8 +113,14 @@ export class GeminiInvoiceService {
         invoiceDate: { type: Type.STRING, description: 'YYYY-MM-DD format' },
         dueDate: { type: Type.STRING, description: 'YYYY-MM-DD format' },
         subtotal: { type: Type.NUMBER },
-        taxRate: { type: Type.NUMBER, description: 'Tax rate % (e.g. 5, 10, 20)' },
-        taxAmount: { type: Type.NUMBER, description: 'Total tax or VAT amount' },
+        taxRate: {
+          type: Type.NUMBER,
+          description: 'Tax rate % (e.g. 5, 10, 20)',
+        },
+        taxAmount: {
+          type: Type.NUMBER,
+          description: 'Total tax or VAT amount',
+        },
         grandTotal: { type: Type.NUMBER, description: 'Final grand total' },
         items: {
           type: Type.ARRAY,
@@ -153,7 +165,9 @@ export class GeminiInvoiceService {
 
     for (let i = 0; i < candidateModels.length; i++) {
       const model = candidateModels[i];
-      const modelDisplayName = model.replace('gemini-', 'Gemini ').replace('-', ' ');
+      const modelDisplayName = model
+        .replace('gemini-', 'Gemini ')
+        .replace('-', ' ');
       const progressPct = 30 + i * 20;
       onProgress?.(`Extracting with ${modelDisplayName}...`, progressPct);
 
@@ -178,7 +192,10 @@ export class GeminiInvoiceService {
 
         // 12s timeout per candidate model so it never hangs indefinitely
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error(`Timeout: ${model} exceeded 12s`)), 12000),
+          setTimeout(
+            () => reject(new Error(`Timeout: ${model} exceeded 12s`)),
+            12000,
+          ),
         );
 
         response = await Promise.race([apiCall, timeoutPromise]);
@@ -210,28 +227,80 @@ export class GeminiInvoiceService {
 
     // Fallback compatibility bindings
     parsedJson.documentType = 'AP_INVOICE';
-    parsedJson.vendorName = parsedJson.vendor?.name || parsedJson.vendorName || '';
+    parsedJson.vendorName =
+      parsedJson.vendor?.name || parsedJson.vendorName || '';
+    parsedJson.vendorPhone =
+      parsedJson.vendor?.phone || parsedJson.vendorPhone || '';
+    parsedJson.vendorTaxId =
+      parsedJson.vendor?.taxId || parsedJson.vendorTaxId || '';
+    parsedJson.vendorAddress =
+      [
+        parsedJson.vendor?.street,
+        parsedJson.vendor?.city,
+        parsedJson.vendor?.country,
+      ]
+        .filter(Boolean)
+        .join(', ') ||
+      (parsedJson.vendor as any)?.address ||
+      parsedJson.vendorAddress ||
+      '';
     parsedJson.billedTo = parsedJson.billTo?.name || parsedJson.billedTo || '';
-    if (parsedJson.poNumber) parsedJson.poNumber = String(parsedJson.poNumber).trim();
-    if (parsedJson.paymentTerms) parsedJson.paymentTerms = String(parsedJson.paymentTerms).trim();
+    parsedJson.billedPhone =
+      parsedJson.billTo?.phone || parsedJson.billedPhone || '';
+    parsedJson.billedAddress =
+      [
+        parsedJson.billTo?.street,
+        parsedJson.billTo?.city,
+        parsedJson.billTo?.country,
+      ]
+        .filter(Boolean)
+        .join(', ') ||
+      (parsedJson.billTo as any)?.address ||
+      parsedJson.billedAddress ||
+      '';
+    if (parsedJson.poNumber)
+      parsedJson.poNumber = String(parsedJson.poNumber).trim();
+    if (parsedJson.paymentTerms)
+      parsedJson.paymentTerms = String(parsedJson.paymentTerms).trim();
 
-    // Ensure items have clean itemCode / SKU
-    if (parsedJson.items && Array.isArray(parsedJson.items)) {
+    // Ensure items is always an array with clean itemCode / SKU
+    if (!parsedJson.items || !Array.isArray(parsedJson.items)) {
+      parsedJson.items = [];
+    } else {
       parsedJson.items.forEach((it: any, idx: number) => {
         if (!it.itemNo) it.itemNo = idx + 1;
-        it.itemCode = (it.itemCode || it.sku || it.code || it.partNo || '').trim();
+        it.itemCode = (
+          it.itemCode ||
+          it.sku ||
+          it.code ||
+          it.partNo ||
+          ''
+        ).trim();
       });
     }
 
     // Auto-calculate taxRate or taxAmount if missing
     if (parsedJson.subtotal && parsedJson.taxAmount && !parsedJson.taxRate) {
-      parsedJson.taxRate = Number(((parsedJson.taxAmount / parsedJson.subtotal) * 100).toFixed(1));
-    } else if (parsedJson.subtotal && parsedJson.taxRate && !parsedJson.taxAmount) {
-      parsedJson.taxAmount = Number(((parsedJson.subtotal * (parsedJson.taxRate / 100))).toFixed(2));
+      parsedJson.taxRate = Number(
+        ((parsedJson.taxAmount / parsedJson.subtotal) * 100).toFixed(1),
+      );
+    } else if (
+      parsedJson.subtotal &&
+      parsedJson.taxRate &&
+      !parsedJson.taxAmount
+    ) {
+      parsedJson.taxAmount = Number(
+        (parsedJson.subtotal * (parsedJson.taxRate / 100)).toFixed(2),
+      );
     }
 
-    if (parsedJson.grandTotal === undefined && parsedJson.subtotal !== undefined) {
-      parsedJson.grandTotal = Number((parsedJson.subtotal + (parsedJson.taxAmount || 0)).toFixed(2));
+    if (
+      parsedJson.grandTotal === undefined &&
+      parsedJson.subtotal !== undefined
+    ) {
+      parsedJson.grandTotal = Number(
+        (parsedJson.subtotal + (parsedJson.taxAmount || 0)).toFixed(2),
+      );
     }
 
     // Ensure rawOcrText contains real transcribed document lines
@@ -240,11 +309,11 @@ export class GeminiInvoiceService {
       if (parsedJson.vendor?.name) lines.push(parsedJson.vendor.name);
       if (parsedJson.invoiceNumber)
         lines.push(`Invoice No: ${parsedJson.invoiceNumber}`);
-      if (parsedJson.poNumber)
-        lines.push(`PO No: ${parsedJson.poNumber}`);
+      if (parsedJson.poNumber) lines.push(`PO No: ${parsedJson.poNumber}`);
       if (parsedJson.invoiceDate) lines.push(`Date: ${parsedJson.invoiceDate}`);
       if (parsedJson.dueDate) lines.push(`Due Date: ${parsedJson.dueDate}`);
-      if (parsedJson.paymentTerms) lines.push(`Terms: ${parsedJson.paymentTerms}`);
+      if (parsedJson.paymentTerms)
+        lines.push(`Terms: ${parsedJson.paymentTerms}`);
       if (parsedJson.billTo?.name)
         lines.push(`Bill To: ${parsedJson.billTo.name}`);
       lines.push('');

@@ -126,9 +126,14 @@ export interface APInvoiceJSON {
   termsAndConditions?: string;
   rawOcrText?: string;
 
-  // Legacy flat fields for template bindings
+  // Flat fields for template bindings
   vendorName?: string;
+  vendorPhone?: string;
+  vendorTaxId?: string;
+  vendorAddress?: string;
   billedTo?: string;
+  billedPhone?: string;
+  billedAddress?: string;
 }
 
 @Component({
@@ -269,16 +274,34 @@ export class HomePage implements OnInit, OnDestroy {
   }
 
   get extractedInvoiceJson(): any {
+    if (
+      this.extractedApInvoice &&
+      !Array.isArray(this.extractedApInvoice.items)
+    ) {
+      this.extractedApInvoice.items = [];
+    }
     return this.extractedApInvoice;
   }
   set extractedInvoiceJson(val: any) {
+    if (val && !Array.isArray(val.items)) {
+      val.items = [];
+    }
     this.extractedApInvoice = val;
   }
 
   get currentApInvoice(): any {
+    if (
+      this.extractedApInvoice &&
+      !Array.isArray(this.extractedApInvoice.items)
+    ) {
+      this.extractedApInvoice.items = [];
+    }
     return this.extractedApInvoice;
   }
   set currentApInvoice(val: any) {
+    if (val && !Array.isArray(val.items)) {
+      val.items = [];
+    }
     this.extractedApInvoice = val;
   }
 
@@ -1480,7 +1503,7 @@ export class HomePage implements OnInit, OnDestroy {
           const nonSpaceChars = trimmed.replace(/\s/g, '').length;
           if (nonSpaceChars === 0) return false;
           const symbolMatches = trimmed.match(SYMBOL_PATTERN) || [];
-          return symbolMatches.length / nonSpaceChars <= 0.40;
+          return symbolMatches.length / nonSpaceChars <= 0.4;
         })
         .join('\n')
         .trim();
@@ -1522,12 +1545,15 @@ export class HomePage implements OnInit, OnDestroy {
 
       const symbolMatches = lineText.match(SYMBOL_PATTERN) || [];
       const symbolRatio = symbolMatches.length / nonSpaceChars;
-      if (symbolRatio > 0.40) {
+      if (symbolRatio > 0.4) {
         continue;
       }
 
       // 3. Drop lines that are purely horizontal dividers, underlines, or isolated noise letters (e.g. "_   ត  យ")
-      const lettersAndDigits = lineText.replace(/[^A-Za-z0-9\u1780-\u17FF]/g, '');
+      const lettersAndDigits = lineText.replace(
+        /[^A-Za-z0-9\u1780-\u17FF]/g,
+        '',
+      );
       if (lettersAndDigits.length < 3 && /^[_\-.:~*+=|#\s]+/.test(lineText)) {
         continue;
       }
@@ -1634,7 +1660,7 @@ export class HomePage implements OnInit, OnDestroy {
    */
   async runGeminiAiExtraction(
     activePageDataUrl: string,
-    preserveActiveTab = false
+    preserveActiveTab = false,
   ): Promise<APInvoiceJSON | null> {
     let progressTimer: any = null;
     const currentTab = this.activeApTab;
@@ -1662,7 +1688,8 @@ export class HomePage implements OnInit, OnDestroy {
             currentPct += Math.floor(Math.random() * 6) + 3;
             this.ocrProgress = Math.min(85, currentPct);
             if (this.ocrProgress > 65) {
-              this.ocrStatusText = 'Extracting invoice line items, tax & totals...';
+              this.ocrStatusText =
+                'Extracting invoice line items, tax & totals...';
             } else if (this.ocrProgress > 40) {
               this.ocrStatusText = 'Analyzing document layout & visual text...';
             }
@@ -1712,7 +1739,8 @@ export class HomePage implements OnInit, OnDestroy {
       console.warn('Gemini AI Extraction noticed:', error?.message || error);
       this.ngZone.run(() => {
         this.ocrProgress = 50;
-        this.ocrStatusText = 'Gemini AI busy, falling back to local OCR engine...';
+        this.ocrStatusText =
+          'Gemini AI busy, falling back to local OCR engine...';
         this.cdr.detectChanges();
       });
       return null;
@@ -1746,11 +1774,16 @@ export class HomePage implements OnInit, OnDestroy {
     }
 
     const cleanImage =
-      activePage.displayDataUrl || activePage.croppedDataUrl || activePage.originalDataUrl;
+      activePage.displayDataUrl ||
+      activePage.croppedDataUrl ||
+      activePage.originalDataUrl;
 
     // 1. First attempt high-speed multimodal vision extraction with Gemini 2.5 Flash
     if (this.geminiInvoiceService) {
-      const geminiResult = await this.runGeminiAiExtraction(cleanImage, preserveActiveTab);
+      const geminiResult = await this.runGeminiAiExtraction(
+        cleanImage,
+        preserveActiveTab,
+      );
       if (geminiResult) {
         return;
       }
@@ -1771,10 +1804,36 @@ export class HomePage implements OnInit, OnDestroy {
   }
 
   /**
-   * Alias method for existing template bindings
+   * Alias method for existing template bindings.
+   * If the AP Invoice sidebar is already open, clicking toggles it closed.
    */
   async extractApInvoiceToJson(): Promise<void> {
+    if (this.showInvoiceJsonModal && !this.isExtractingApInvoice && !this.isOcrRunning) {
+      this.closeInvoiceJsonModal();
+      return;
+    }
     await this.extractAndConvertApInvoice();
+  }
+
+  /**
+   * Toggle AP Invoice sidebar open / closed
+   */
+  toggleInvoiceSidebar(): void {
+    if (this.showInvoiceJsonModal) {
+      this.closeInvoiceJsonModal();
+    } else {
+      this.extractApInvoiceToJson();
+    }
+  }
+
+  /**
+   * Close AP Invoice sidebar when user hits Escape key
+   */
+  @HostListener('window:keydown.escape')
+  onEscapeKey(): void {
+    if (this.showInvoiceJsonModal && !this.isSubmittingApInvoice) {
+      this.closeInvoiceJsonModal();
+    }
   }
 
   /**
@@ -1802,11 +1861,28 @@ export class HomePage implements OnInit, OnDestroy {
     const topLines = lines.slice(0, 8);
 
     // Words to ignore if they appear at the top
-    const ignoreWords = ['invoice', 'bill to', 'ship to', 'logo', 'date', 'phone', 'វិក្កយបត្រ', 'tax', 'receipt', 'tel', 'fax', 'po box'];
+    const ignoreWords = [
+      'invoice',
+      'bill to',
+      'ship to',
+      'logo',
+      'date',
+      'phone',
+      'វិក្កយបត្រ',
+      'tax',
+      'receipt',
+      'tel',
+      'fax',
+      'po box',
+    ];
 
     for (const line of topLines) {
       // Strip leading and trailing non-alphanumeric / non-Khmer characters (e.g. _, -, ., :, |, #, etc.)
-      const clean = line.replace(/^[_\s\-.:|#~*+=]+/, '').replace(/[_\s\-.:|#~*+=]+$/, '').replace(/\s+/g, ' ').trim();
+      const clean = line
+        .replace(/^[_\s\-.:|#~*+=]+/, '')
+        .replace(/[_\s\-.:|#~*+=]+$/, '')
+        .replace(/\s+/g, ' ')
+        .trim();
       if (!clean) continue;
 
       const lower = clean.toLowerCase();
@@ -1828,7 +1904,9 @@ export class HomePage implements OnInit, OnDestroy {
       if (lettersOnly.length < 3) continue;
 
       // Filter out fragmented single-character noise artifacts (e.g. "_   ត  យ")
-      const words = clean.split(' ').filter((w) => /[A-Za-z\u1780-\u17FF]/.test(w));
+      const words = clean
+        .split(' ')
+        .filter((w) => /[A-Za-z\u1780-\u17FF]/.test(w));
       const hasSubstantialWord = words.some(
         (w) => w.replace(/[^A-Za-z\u1780-\u17FF]/g, '').length >= 3,
       );
@@ -1851,35 +1929,62 @@ export class HomePage implements OnInit, OnDestroy {
       .filter((l) => l.length > 0);
 
     // Normalize Khmer numerals to standard Arabic digits for reliable numerical matching
-    const convertedDigitsText = this.convertKhmerNumerals ? this.convertKhmerNumerals(cleanedText) : cleanedText;
+    const convertedDigitsText = this.convertKhmerNumerals
+      ? this.convertKhmerNumerals(cleanedText)
+      : cleanedText;
 
     // Header Regex Extractors (English & Khmer)
     const invMatch =
-      cleanedText.match(/(?:invoice\s*(?:no|number|#)|invoice\s*[:៖#]|inv\s*(?:no|#|[:៖])|bill\s*#|ref\s*#|លេខវិក្កយបត្រ|វិក្កយបត្រលេខ)\s*[:៖.#-]?\s*([A-Za-z0-9-]+)/i) ||
-      convertedDigitsText.match(/(?:invoice\s*(?:no|number|#)?|លេខវិក្កយបត្រ)\s*[:៖.#-]?\s*([A-Za-z0-9-]+)/i);
+      cleanedText.match(
+        /(?:invoice\s*(?:no|number|#)|invoice\s*[:៖#]|inv\s*(?:no|#|[:៖])|bill\s*#|ref\s*#|លេខវិក្កយបត្រ|វិក្កយបត្រលេខ)\s*[:៖.#-]?\s*([A-Za-z0-9-]+)/i,
+      ) ||
+      convertedDigitsText.match(
+        /(?:invoice\s*(?:no|number|#)?|លេខវិក្កយបត្រ)\s*[:៖.#-]?\s*([A-Za-z0-9-]+)/i,
+      );
 
     const poMatch =
-      cleanedText.match(/(?:\b(?:p\.?o\.?\s*(?:no|#)?|po\s*number|purchase\s*order)\b|លេខបញ្ជាទិញ)\s*[:៖.#-]?\s*([A-Za-z0-9-]+)/i) ||
-      convertedDigitsText.match(/(?:\b(?:p\.?o\.?\s*(?:no|#)?)\b|លេខបញ្ជាទិញ)\s*[:៖.#-]?\s*([A-Za-z0-9-]+)/i);
+      cleanedText.match(
+        /(?:\b(?:p\.?o\.?\s*(?:no|#)?|po\s*number|purchase\s*order)\b|លេខបញ្ជាទិញ)\s*[:៖.#-]?\s*([A-Za-z0-9-]+)/i,
+      ) ||
+      convertedDigitsText.match(
+        /(?:\b(?:p\.?o\.?\s*(?:no|#)?)\b|លេខបញ្ជាទិញ)\s*[:៖.#-]?\s*([A-Za-z0-9-]+)/i,
+      );
 
     const dateMatch =
-      cleanedText.match(/(?:invoice\s*date|issue\s*date|dated|កាលបរិច្ឆេទ|ថ្ងៃទី)\s*[:៖.-]?\s*([0-9]{1,2}\s+[A-Za-z]{3,9}\s+[0-9]{4}|\d{1,4}[\/.-]\d{1,2}[\/.-]\d{1,4})/i) ||
-      cleanedText.match(/(?:date|issued)\s*[:៖.-]?\s*([0-9]{1,2}\s+[A-Za-z]{3,9}\s+[0-9]{4}|\d{1,4}[\/.-]\d{1,2}[\/.-]\d{1,4})/i) ||
-      convertedDigitsText.match(/(?:invoice\s*date|date|កាលបរិច្ឆេទ)\s*[:៖.-]?\s*(\d{1,4}[\/.-]\d{1,2}[\/.-]\d{1,4})/i);
+      cleanedText.match(
+        /(?:invoice\s*date|issue\s*date|dated|កាលបរិច្ឆេទ|ថ្ងៃទី)\s*[:៖.-]?\s*([0-9]{1,2}\s+[A-Za-z]{3,9}\s+[0-9]{4}|\d{1,4}[\/.-]\d{1,2}[\/.-]\d{1,4})/i,
+      ) ||
+      cleanedText.match(
+        /(?:date|issued)\s*[:៖.-]?\s*([0-9]{1,2}\s+[A-Za-z]{3,9}\s+[0-9]{4}|\d{1,4}[\/.-]\d{1,2}[\/.-]\d{1,4})/i,
+      ) ||
+      convertedDigitsText.match(
+        /(?:invoice\s*date|date|កាលបរិច្ឆេទ)\s*[:៖.-]?\s*(\d{1,4}[\/.-]\d{1,2}[\/.-]\d{1,4})/i,
+      );
 
     const dueMatch =
-      cleanedText.match(/(?:due\s*date|payment\s*due|ថ្ងៃផុតកំណត់)\s*[:៖.-]?\s*([0-9]{1,2}\s+[A-Za-z]{3,9}\s+[0-9]{4}|\d{1,4}[\/.-]\d{1,2}[\/.-]\d{1,4})/i) ||
-      cleanedText.match(/(?:due)\s*[:៖.-]?\s*([0-9]{1,2}\s+[A-Za-z]{3,9}\s+[0-9]{4}|\d{1,4}[\/.-]\d{1,2}[\/.-]\d{1,4})/i) ||
-      convertedDigitsText.match(/(?:due\s*date|ថ្ងៃផុតកំណត់)\s*[:៖.-]?\s*(\d{1,4}[\/.-]\d{1,2}[\/.-]\d{1,4})/i);
+      cleanedText.match(
+        /(?:due\s*date|payment\s*due|ថ្ងៃផុតកំណត់)\s*[:៖.-]?\s*([0-9]{1,2}\s+[A-Za-z]{3,9}\s+[0-9]{4}|\d{1,4}[\/.-]\d{1,2}[\/.-]\d{1,4})/i,
+      ) ||
+      cleanedText.match(
+        /(?:due)\s*[:៖.-]?\s*([0-9]{1,2}\s+[A-Za-z]{3,9}\s+[0-9]{4}|\d{1,4}[\/.-]\d{1,2}[\/.-]\d{1,4})/i,
+      ) ||
+      convertedDigitsText.match(
+        /(?:due\s*date|ថ្ងៃផុតកំណត់)\s*[:៖.-]?\s*(\d{1,4}[\/.-]\d{1,2}[\/.-]\d{1,4})/i,
+      );
 
-    const termsMatch =
-      cleanedText.match(/(?:terms|payment\s*terms|លក្ខខណ្ឌ|លក្ខខណ្ឌទូទាត់)\s*[:៖.-]?\s*([^\n\r]+)/i);
+    const termsMatch = cleanedText.match(
+      /(?:terms|payment\s*terms|លក្ខខណ្ឌ|លក្ខខណ្ឌទូទាត់)\s*[:៖.-]?\s*([^\n\r]+)/i,
+    );
 
     // Customer / Bill To detection
     let billedTo = '';
     const billToMatch =
-      cleanedText.match(/(?:bill\s*to|billed\s*to|customer|អតិថិជន)\s*[:៖]?\s*\n\s*([^\n\r]+)/i) ||
-      cleanedText.match(/(?:bill\s*to|billed\s*to)\s*[:៖]?\s*([A-Za-z0-9.\s]+?)(?=\s+(?:ship\s*to|\d{3,}))/i);
+      cleanedText.match(
+        /(?:bill\s*to|billed\s*to|customer|អតិថិជន)\s*[:៖]?\s*\n\s*([^\n\r]+)/i,
+      ) ||
+      cleanedText.match(
+        /(?:bill\s*to|billed\s*to)\s*[:៖]?\s*([A-Za-z0-9.\s]+?)(?=\s+(?:ship\s*to|\d{3,}))/i,
+      );
 
     if (billToMatch) {
       billedTo = billToMatch[1]
@@ -1890,33 +1995,63 @@ export class HomePage implements OnInit, OnDestroy {
 
     // Financial Totals Extractors (English & Khmer)
     const subtotalMatch =
-      cleanedText.match(/(?:sub\s*total|សរុបរង)\s*[:៖$៛]?\s*[$៛]?\s*([\d,.]+)/i) ||
-      convertedDigitsText.match(/(?:sub\s*total|សរុបរង)\s*[:៖$៛]?\s*[$៛]?\s*([\d,.]+)/i);
+      cleanedText.match(
+        /(?:sub\s*total|សរុបរង)\s*[:៖$៛]?\s*[$៛]?\s*([\d,.]+)/i,
+      ) ||
+      convertedDigitsText.match(
+        /(?:sub\s*total|សរុបរង)\s*[:៖$៛]?\s*[$៛]?\s*([\d,.]+)/i,
+      );
 
     const taxRateMatch =
       cleanedText.match(/(?:tax\s*rate|អត្រាពន្ធ)\s*[:៖]?\s*([\d,.]+)%/i) ||
-      convertedDigitsText.match(/(?:tax\s*rate|អត្រាពន្ធ)\s*[:៖]?\s*([\d,.]+)%/i);
+      convertedDigitsText.match(
+        /(?:tax\s*rate|អត្រាពន្ធ)\s*[:៖]?\s*([\d,.]+)%/i,
+      );
 
     const taxMatch =
-      cleanedText.match(/(?:tax|vat|sales\s*tax|ពន្ធ|អាករ)\s*[:៖$៛%]?\s*[$៛]?\s*([\d,.]+)/i) ||
-      convertedDigitsText.match(/(?:tax|vat|sales\s*tax|ពន្ធ)\s*[:៖$៛%]?\s*[$៛]?\s*([\d,.]+)/i);
+      cleanedText.match(
+        /(?:tax|vat|sales\s*tax|ពន្ធ|អាករ)\s*[:៖$៛%]?\s*[$៛]?\s*([\d,.]+)/i,
+      ) ||
+      convertedDigitsText.match(
+        /(?:tax|vat|sales\s*tax|ពន្ធ)\s*[:៖$៛%]?\s*[$៛]?\s*([\d,.]+)/i,
+      );
 
     const totalMatch =
-      cleanedText.match(/(?:balance\s*due|grand\s*total|total\s*due|total|សរុបរួម|(?:\r?\n|^)\s*total)\s*[:៖$៛]?\s*[$៛]?\s*([\d,.]+)/i) ||
-      convertedDigitsText.match(/(?:grand\s*total|total\s*due|total|សរុបរួម)\s*[:៖$៛]?\s*[$៛]?\s*([\d,.]+)/i);
+      cleanedText.match(
+        /(?:balance\s*due|grand\s*total|total\s*due|total|សរុបរួម|(?:\r?\n|^)\s*total)\s*[:៖$៛]?\s*[$៛]?\s*([\d,.]+)/i,
+      ) ||
+      convertedDigitsText.match(
+        /(?:grand\s*total|total\s*due|total|សរុបរួម)\s*[:៖$៛]?\s*[$៛]?\s*([\d,.]+)/i,
+      );
 
     const balanceMatch =
-      cleanedText.match(/(?:balance\s*due|ទឹកប្រាក់ត្រូវបង់)\s*[:៖$៛]?\s*[$៛]?\s*([\d,.]+)/i) ||
-      convertedDigitsText.match(/(?:balance\s*due|ទឹកប្រាក់ត្រូវបង់)\s*[:៖$៛]?\s*[$៛]?\s*([\d,.]+)/i);
+      cleanedText.match(
+        /(?:balance\s*due|ទឹកប្រាក់ត្រូវបង់)\s*[:៖$៛]?\s*[$៛]?\s*([\d,.]+)/i,
+      ) ||
+      convertedDigitsText.match(
+        /(?:balance\s*due|ទឹកប្រាក់ត្រូវបង់)\s*[:៖$៛]?\s*[$៛]?\s*([\d,.]+)/i,
+      );
 
-    const subtotal = subtotalMatch ? parseFloat(subtotalMatch[1].replace(/,/g, '')) : 0;
-    const taxRate = taxRateMatch ? parseFloat(taxRateMatch[1]) : (subtotal > 0 && taxMatch ? Math.round((parseFloat(taxMatch[1].replace(/,/g, '')) / subtotal) * 100) : 10);
+    const subtotal = subtotalMatch
+      ? parseFloat(subtotalMatch[1].replace(/,/g, ''))
+      : 0;
+    const taxRate = taxRateMatch
+      ? parseFloat(taxRateMatch[1])
+      : subtotal > 0 && taxMatch
+        ? Math.round(
+            (parseFloat(taxMatch[1].replace(/,/g, '')) / subtotal) * 100,
+          )
+        : 10;
     let taxAmount = taxMatch ? parseFloat(taxMatch[1].replace(/,/g, '')) : 0;
     if (taxRate > 0 && subtotal > 0 && taxAmount === 0) {
       taxAmount = Math.round(subtotal * (taxRate / 100) * 100) / 100;
     }
-    const grandTotal = totalMatch ? parseFloat(totalMatch[1].replace(/,/g, '')) : Math.round((subtotal + taxAmount) * 100) / 100;
-    const balanceDue = balanceMatch ? parseFloat(balanceMatch[1].replace(/,/g, '')) : grandTotal;
+    const grandTotal = totalMatch
+      ? parseFloat(totalMatch[1].replace(/,/g, ''))
+      : Math.round((subtotal + taxAmount) * 100) / 100;
+    const balanceDue = balanceMatch
+      ? parseFloat(balanceMatch[1].replace(/,/g, ''))
+      : grandTotal;
 
     // Currency Detection
     const currency = /៛|រៀល|KHR/i.test(cleanedText) ? 'KHR' : 'USD';
@@ -1925,9 +2060,15 @@ export class HomePage implements OnInit, OnDestroy {
     let vendorName = this.extractVendorName(lines);
     if (vendorName === 'Unknown Vendor') {
       for (const line of lines.slice(0, 6)) {
-        const cleaned = line.replace(/^[_\s\-.:|#~*+=]+/, '').replace(/[_\s\-.:|#~*+=]+$/, '').trim();
+        const cleaned = line
+          .replace(/^[_\s\-.:|#~*+=]+/, '')
+          .replace(/[_\s\-.:|#~*+=]+$/, '')
+          .trim();
         const letters = cleaned.replace(/[^A-Za-z\u1780-\u17FF]/g, '');
-        if (letters.length >= 3 && !/(invoice|total|tax|bill|date|phone|due)/i.test(cleaned)) {
+        if (
+          letters.length >= 3 &&
+          !/(invoice|total|tax|bill|date|phone|due)/i.test(cleaned)
+        ) {
           vendorName = cleaned;
           break;
         }
@@ -1939,40 +2080,66 @@ export class HomePage implements OnInit, OnDestroy {
     let vendorCity = '';
     let vendorCountry = '';
     for (const l of lines.slice(1, 6)) {
-      if (/\b(street|st\b|road|rd\b|avenue|ave\b|boulevard|blvd\b|lane|drive|dr\b)\b/i.test(l)) {
+      if (
+        /\b(street|st\b|road|rd\b|avenue|ave\b|boulevard|blvd\b|lane|drive|dr\b)\b/i.test(
+          l,
+        )
+      ) {
         if (!vendorStreet) vendorStreet = l;
         else vendorCity += (vendorCity ? ', ' : '') + l;
-      } else if (/\b(u\.?s\.?a|united states|cambodia|uk|canada|france|singapore)\b/i.test(l)) {
+      } else if (
+        /\b(u\.?s\.?a|united states|cambodia|uk|canada|france|singapore)\b/i.test(
+          l,
+        )
+      ) {
         vendorCountry = l;
       }
     }
 
     // Line Items Extraction (Comprehensive patterns: 3-num, 2-num, and 1-num item rows)
     const items: APInvoiceLineItem[] = [];
-    const regex3_1 = /^(?:\d+\s+)?(.+?)\s+([\d,.]+)\s+[$៛]?([\d,.]+)\s+[$៛]?([\d,.]+)$/;
-    const regex3_2 = /^(?:\d+\s+)?(.+?)\s+[$៛]?([\d,.]+)\s+([\d,.]+)\s+[$៛]?([\d,.]+)$/;
+    const regex3_1 =
+      /^(?:\d+\s+)?(.+?)\s+([\d,.]+)\s+[$៛]?([\d,.]+)\s+[$៛]?([\d,.]+)$/;
+    const regex3_2 =
+      /^(?:\d+\s+)?(.+?)\s+[$៛]?([\d,.]+)\s+([\d,.]+)\s+[$៛]?([\d,.]+)$/;
     const itemRegexUser = /^(.+?)\s+[$៛]?([\d,.]+)\s+(\d+)\s+[$៛]?([\d,.]+)$/;
     // 2-number pattern: [Description] [Qty] [Total] OR [Description] [Price] [Total]
-    const regex2_num = /^(?:\d+\s+)?([A-Za-z\u1780-\u17FF\s&()./_-]{2,})\s+(\d+)\s+[$៛]?([\d,.]+)$/;
+    const regex2_num =
+      /^(?:\d+\s+)?([A-Za-z\u1780-\u17FF\s&()./_-]{2,})\s+(\d+)\s+[$៛]?([\d,.]+)$/;
     // 1-number pattern: [Description] [Total]
-    const regex1_num = /^(?:\d+\s+)?([A-Za-z\u1780-\u17FF\s&()./_-]{3,})\s+[$៛]?([\d,.]+)$/;
+    const regex1_num =
+      /^(?:\d+\s+)?([A-Za-z\u1780-\u17FF\s&()./_-]{3,})\s+[$៛]?([\d,.]+)$/;
 
     for (const rawLine of lines) {
-      if (/^(#|item|description|sub\s*total|total|tax|vat|terms|balance|thanks|bill\s*to|ship\s*to|invoice|due|date|phone|email)/i.test(rawLine)) continue;
+      if (
+        /^(#|item|description|sub\s*total|total|tax|vat|terms|balance|thanks|bill\s*to|ship\s*to|invoice|due|date|phone|email)/i.test(
+          rawLine,
+        )
+      )
+        continue;
 
       // 1. Try 3 numbers pattern (Qty, Price, Total)
-      const match3 = rawLine.match(regex3_1) || rawLine.match(regex3_2) || rawLine.match(itemRegexUser);
+      const match3 =
+        rawLine.match(regex3_1) ||
+        rawLine.match(regex3_2) ||
+        rawLine.match(itemRegexUser);
       if (match3) {
         const v1 = parseFloat(match3[2].replace(/,/g, ''));
         const v2 = parseFloat(match3[3].replace(/,/g, ''));
-        const v3 = match3[4] ? parseFloat(match3[4].replace(/,/g, '')) : (v1 * v2);
-        let qty = 1, unitPrice = v2;
+        const v3 = match3[4]
+          ? parseFloat(match3[4].replace(/,/g, ''))
+          : v1 * v2;
+        let qty = 1,
+          unitPrice = v2;
         if (Math.abs(v1 * v2 - v3) < 0.05) {
-          qty = v1; unitPrice = v2;
+          qty = v1;
+          unitPrice = v2;
         } else if (Math.abs(v2 * v1 - v3) < 0.05) {
-          qty = v2; unitPrice = v1;
+          qty = v2;
+          unitPrice = v1;
         } else if (v1 < 100 && v2 >= v1) {
-          qty = v1; unitPrice = v2;
+          qty = v1;
+          unitPrice = v2;
         }
         items.push({
           itemNo: items.length + 1,
@@ -2007,7 +2174,13 @@ export class HomePage implements OnInit, OnDestroy {
         const amount = parseFloat(match1[2].replace(/,/g, '')) || 0;
         const desc = match1[1].trim();
         // Ignore headers or metadata lines
-        if (amount > 0 && desc.length > 2 && !/(invoice|total|balance|due|tax|vat|subtotal|rate|phone|date|po\s*box|zip)/i.test(desc)) {
+        if (
+          amount > 0 &&
+          desc.length > 2 &&
+          !/(invoice|total|balance|due|tax|vat|subtotal|rate|phone|date|po\s*box|zip)/i.test(
+            desc,
+          )
+        ) {
           if (amount === subtotal && items.length > 0) continue;
           items.push({
             itemNo: items.length + 1,
@@ -2026,7 +2199,12 @@ export class HomePage implements OnInit, OnDestroy {
       // Search lines for likely item description
       let bestDesc = '';
       for (const l of lines) {
-        if (!/(invoice|bill\s*to|ship\s*to|total|subtotal|tax|due|date|phone|email|terms|thanks|balance|po\b)/i.test(l) && l.length > 4) {
+        if (
+          !/(invoice|bill\s*to|ship\s*to|total|subtotal|tax|due|date|phone|email|terms|thanks|balance|po\b)/i.test(
+            l,
+          ) &&
+          l.length > 4
+        ) {
           bestDesc = l.replace(/^[\d\s.#-]+/, '').trim();
           break;
         }
@@ -2041,8 +2219,12 @@ export class HomePage implements OnInit, OnDestroy {
     }
 
     // Notes & Terms & Conditions
-    const notesMatch = cleanedText.match(/(?:thanks\s*for[^\n\r]+|សូមអរគុណ[^\n\r]*)/i);
-    const tAndCMatch = cleanedText.match(/terms\s*&\s*conditions[\s\S]*?(?=\n\n|$)/i);
+    const notesMatch = cleanedText.match(
+      /(?:thanks\s*for[^\n\r]+|សូមអរគុណ[^\n\r]*)/i,
+    );
+    const tAndCMatch = cleanedText.match(
+      /terms\s*&\s*conditions[\s\S]*?(?=\n\n|$)/i,
+    );
 
     return {
       documentType: 'AP_INVOICE',
@@ -2069,7 +2251,11 @@ export class HomePage implements OnInit, OnDestroy {
       },
 
       // 3. Invoice Header Details
-      invoiceNumber: invMatch ? invMatch[1] : (this.activePage ? `INV-${this.activePage.id.slice(-6)}` : ''),
+      invoiceNumber: invMatch
+        ? invMatch[1]
+        : this.activePage
+          ? `INV-${this.activePage.id.slice(-6)}`
+          : '',
       invoiceDate: dateMatch ? this.standardizeDateString(dateMatch[1]) : '',
       dueDate: dueMatch ? this.standardizeDateString(dueMatch[1]) : '',
       poNumber: poMatch ? poMatch[1].trim() : '',
@@ -2087,7 +2273,9 @@ export class HomePage implements OnInit, OnDestroy {
 
       // 6. Footer & Payment Instructions
       notes: notesMatch ? notesMatch[0].trim() : undefined,
-      termsAndConditions: tAndCMatch ? tAndCMatch[0].replace(/^terms\s*&\s*conditions\s*/i, '').trim() : undefined,
+      termsAndConditions: tAndCMatch
+        ? tAndCMatch[0].replace(/^terms\s*&\s*conditions\s*/i, '').trim()
+        : undefined,
       rawOcrText: rawText,
 
       // Legacy flat fields for template bindings
@@ -2131,7 +2319,9 @@ export class HomePage implements OnInit, OnDestroy {
         !nonVendorWords.test(line) &&
         line.length >= 3 &&
         !/^[\d០-៩\s.,/:-]+$/.test(line) &&
-        !/(date|due|total|subtotal|tax|vat|លេខ|កាលបរិច្ឆេទ|សរុប|ពន្ធ)/i.test(line)
+        !/(date|due|total|subtotal|tax|vat|លេខ|កាលបរិច្ឆេទ|សរុប|ពន្ធ)/i.test(
+          line,
+        )
       ) {
         vendorName = line;
         break;
@@ -2334,7 +2524,9 @@ export class HomePage implements OnInit, OnDestroy {
       items,
       subtotal:
         subtotal ||
-        (items.length > 0 ? items.reduce((s: number, it: any) => s + it.total, 0) : 0),
+        (items.length > 0
+          ? items.reduce((s: number, it: any) => s + it.total, 0)
+          : 0),
       taxRate,
       taxAmount,
       grandTotal: grandTotal || subtotal || 0,
@@ -2423,7 +2615,8 @@ export class HomePage implements OnInit, OnDestroy {
    */
   get formattedApJson(): string {
     if (!this.extractedApInvoice) return '';
-    const { rawOcrText, vendorName, billedTo, ...clean } = this.extractedApInvoice;
+    const { rawOcrText, vendorName, billedTo, ...clean } =
+      this.extractedApInvoice;
     if (clean.vendor && vendorName && clean.vendor.name !== vendorName) {
       clean.vendor.name = vendorName;
     }
@@ -2468,7 +2661,9 @@ export class HomePage implements OnInit, OnDestroy {
     });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const invNo = (this.extractedInvoiceJson?.invoiceNumber || 'AP_Invoice').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const invNo = (
+      this.extractedInvoiceJson?.invoiceNumber || 'AP_Invoice'
+    ).replace(/[^a-zA-Z0-9_-]/g, '_');
     a.href = url;
     a.download = `${invNo}.json`;
     document.body.appendChild(a);
@@ -2503,7 +2698,9 @@ export class HomePage implements OnInit, OnDestroy {
   removeLineItem(index: number) {
     if (!this.extractedInvoiceJson?.items) return;
     this.extractedInvoiceJson.items.splice(index, 1);
-    this.extractedInvoiceJson.items.forEach((item: any, idx: number) => (item.itemNo = idx + 1));
+    this.extractedInvoiceJson.items.forEach(
+      (item: any, idx: number) => (item.itemNo = idx + 1),
+    );
     this.recalculateGrandTotal();
   }
 
@@ -2526,10 +2723,11 @@ export class HomePage implements OnInit, OnDestroy {
     const rate = Number(this.extractedInvoiceJson.taxRate) || 0;
     if (rate > 0) {
       this.extractedInvoiceJson.taxAmount =
-        Math.round((subtotal * (rate / 100)) * 100) / 100;
+        Math.round(subtotal * (rate / 100) * 100) / 100;
     }
     const taxAmt = Number(this.extractedInvoiceJson.taxAmount) || 0;
-    this.extractedInvoiceJson.grandTotal = Math.round((subtotal + taxAmt) * 100) / 100;
+    this.extractedInvoiceJson.grandTotal =
+      Math.round((subtotal + taxAmt) * 100) / 100;
   }
 
   /**
@@ -2541,10 +2739,11 @@ export class HomePage implements OnInit, OnDestroy {
     const rate = Number(this.extractedInvoiceJson.taxRate) || 0;
     if (rate >= 0 && subtotal > 0) {
       this.extractedInvoiceJson.taxAmount =
-        Math.round((subtotal * (rate / 100)) * 100) / 100;
+        Math.round(subtotal * (rate / 100) * 100) / 100;
     }
     const taxAmt = Number(this.extractedInvoiceJson.taxAmount) || 0;
-    this.extractedInvoiceJson.grandTotal = Math.round((subtotal + taxAmt) * 100) / 100;
+    this.extractedInvoiceJson.grandTotal =
+      Math.round((subtotal + taxAmt) * 100) / 100;
   }
 
   /**
@@ -2558,7 +2757,8 @@ export class HomePage implements OnInit, OnDestroy {
       this.extractedInvoiceJson.taxRate =
         Math.round((taxAmt / subtotal) * 1000) / 10;
     }
-    this.extractedInvoiceJson.grandTotal = Math.round((subtotal + taxAmt) * 100) / 100;
+    this.extractedInvoiceJson.grandTotal =
+      Math.round((subtotal + taxAmt) * 100) / 100;
   }
 
   /**
@@ -2578,16 +2778,22 @@ export class HomePage implements OnInit, OnDestroy {
   recalculateGrandTotal() {
     if (!this.extractedInvoiceJson) return;
     const items = this.extractedInvoiceJson.items || [];
-    const subtotal = items.reduce((sum: number, item: any) => sum + (item.total || 0), 0);
+    const subtotal = items.reduce(
+      (sum: number, item: any) => sum + (item.total || 0),
+      0,
+    );
     this.extractedInvoiceJson.subtotal = Math.round(subtotal * 100) / 100;
 
     const rate = Number(this.extractedInvoiceJson.taxRate) || 0;
     if (rate > 0) {
       this.extractedInvoiceJson.taxAmount =
-        Math.round((this.extractedInvoiceJson.subtotal * (rate / 100)) * 100) / 100;
+        Math.round(this.extractedInvoiceJson.subtotal * (rate / 100) * 100) /
+        100;
     }
 
-    const grand = this.extractedInvoiceJson.subtotal + (Number(this.extractedInvoiceJson.taxAmount) || 0);
+    const grand =
+      this.extractedInvoiceJson.subtotal +
+      (Number(this.extractedInvoiceJson.taxAmount) || 0);
     this.extractedInvoiceJson.grandTotal = Math.round(grand * 100) / 100;
   }
 
@@ -2626,7 +2832,8 @@ export class HomePage implements OnInit, OnDestroy {
       if (this.supabaseService && this.supabaseService.isConfigured()) {
         let fileBlob: Blob | undefined;
         const page = this.activePage;
-        const imgUrl = page?.displayDataUrl || page?.croppedDataUrl || page?.originalDataUrl;
+        const imgUrl =
+          page?.displayDataUrl || page?.croppedDataUrl || page?.originalDataUrl;
         if (imgUrl && imgUrl.startsWith('data:')) {
           try {
             const res = await fetch(imgUrl);
@@ -2643,12 +2850,18 @@ export class HomePage implements OnInit, OnDestroy {
           this.ngZone.run(() => {
             this.showApInvoiceModal = false;
             this.showInvoiceJsonModal = false;
-            this.openConfirmation('Success', 'AP Invoice data inserted successfully into Supabase!');
+            this.openConfirmation(
+              'Success',
+              'AP Invoice data inserted successfully into Supabase!',
+            );
             this.cdr.detectChanges();
           });
           return;
         } else {
-          console.warn('Supabase insert failed, trying backend server:', result.error);
+          console.warn(
+            'Supabase insert failed, trying backend server:',
+            result.error,
+          );
         }
       }
 
@@ -2669,7 +2882,10 @@ export class HomePage implements OnInit, OnDestroy {
       this.ngZone.run(() => {
         this.showApInvoiceModal = false;
         this.showInvoiceJsonModal = false;
-        this.openConfirmation('Success', 'AP Invoice data inserted successfully!');
+        this.openConfirmation(
+          'Success',
+          'AP Invoice data inserted successfully!',
+        );
         this.cdr.detectChanges();
       });
     } catch (err) {
@@ -2677,7 +2893,10 @@ export class HomePage implements OnInit, OnDestroy {
       this.ngZone.run(() => {
         this.showApInvoiceModal = false;
         this.showInvoiceJsonModal = false;
-        this.openConfirmation('Success', 'AP Invoice data inserted successfully!');
+        this.openConfirmation(
+          'Success',
+          'AP Invoice data inserted successfully!',
+        );
         this.cdr.detectChanges();
       });
     } finally {
@@ -2702,7 +2921,8 @@ export class HomePage implements OnInit, OnDestroy {
       // Check if active page has image to upload to storage
       let fileBlob: Blob | undefined;
       const page = this.activePage;
-      const imgUrl = page?.displayDataUrl || page?.croppedDataUrl || page?.originalDataUrl;
+      const imgUrl =
+        page?.displayDataUrl || page?.croppedDataUrl || page?.originalDataUrl;
       if (imgUrl && imgUrl.startsWith('data:')) {
         try {
           const res = await fetch(imgUrl);
@@ -2721,18 +2941,27 @@ export class HomePage implements OnInit, OnDestroy {
         throw new Error(result.error || 'Failed to save invoice to Supabase');
       }
 
-      console.log('AI Invoice successfully stored in Supabase tables!', result.data);
+      console.log(
+        'AI Invoice successfully stored in Supabase tables!',
+        result.data,
+      );
 
       this.ngZone.run(() => {
         this.showApInvoiceModal = false;
         this.showInvoiceJsonModal = false;
-        this.openConfirmation('Success', 'AI Invoice saved to Supabase successfully!');
+        this.openConfirmation(
+          'Success',
+          'AI Invoice saved to Supabase successfully!',
+        );
         this.cdr.detectChanges();
       });
     } catch (err: any) {
       console.error('Failed to save invoice to Supabase:', err);
       this.ngZone.run(() => {
-        this.openConfirmation('Save Error', 'Failed to save invoice to Supabase: ' + (err?.message || err));
+        this.openConfirmation(
+          'Save Error',
+          'Failed to save invoice to Supabase: ' + (err?.message || err),
+        );
         this.cdr.detectChanges();
       });
     } finally {

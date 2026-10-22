@@ -1,0 +1,1282 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Document Data Extractor - FieldBi AI</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f5f3ff',
+              100: '#ede9fe',
+              200: '#ddd6fe',
+              300: '#c4b5fd',
+              400: '#a78bfa',
+              500: '#8b5cf6',
+              600: '#7c3aed',
+              700: '#6d28d9',
+              800: '#5b21b6',
+              900: '#4c1d95',
+            }
+          },
+          animation: {
+            'scan-line': 'scanLine 2.2s ease-in-out infinite',
+            'pulse-glow': 'pulseGlow 2s ease-in-out infinite',
+          },
+          keyframes: {
+            scanLine: {
+              '0%, 100%': { transform: 'translateY(-10%)', opacity: '0.2' },
+              '50%': { transform: 'translateY(110%)', opacity: '0.9' },
+            },
+            pulseGlow: {
+              '0%, 100%': { opacity: '0.4', transform: 'scale(1)' },
+              '50%': { opacity: '0.8', transform: 'scale(1.05)' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts: Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    code, pre, .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    /* Custom subtle dark scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col selection:bg-brand-500/30 selection:text-brand-200">
+
+  <!-- ========================================================================= -->
+  <!-- TOP APP HEADER BAR                                                       -->
+  <!-- ========================================================================= -->
+  <header class="h-16 border-b border-slate-800/80 bg-slate-900/90 backdrop-blur-md sticky top-0 z-40 px-5 flex items-center justify-between">
+    <div class="flex items-center gap-3.5">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-600 to-brand-400 p-0.5 shadow-lg shadow-brand-500/20 flex items-center justify-center">
+        <div class="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
+          <svg class="w-5 h-5 text-brand-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+        </div>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="text-sm font-bold tracking-tight text-white flex items-center gap-1.5">
+            Document Data Extractor
+          </h1>
+          <span class="text-[10px] font-semibold tracking-wider uppercase px-2 py-0.5 rounded-full bg-brand-500/10 text-brand-300 border border-brand-500/20">
+            AI Vision 3.8
+          </span>
+        </div>
+        <p class="text-xs text-slate-400">Split-screen live preview & dynamic key-value structuring</p>
+      </div>
+    </div>
+
+    <!-- Center Document Status Badge -->
+    <div id="docStatusBadge" class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800/90 border border-slate-700/60 text-xs font-medium text-slate-300">
+      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+      <span id="docStatusText">Ready for document upload</span>
+    </div>
+
+    <!-- Header Actions -->
+    <div class="flex items-center gap-2.5">
+      <!-- Sample selector dropdown -->
+      <div class="relative">
+        <select id="sampleSelect" class="bg-slate-800/90 hover:bg-slate-800 text-xs text-slate-200 border border-slate-700/70 rounded-lg px-3 py-2 pr-7 font-medium cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-brand-500/30 appearance-none">
+          <option value="" disabled selected>✨ Load Sample Presets</option>
+          <option value="invoice">SpiceImporter Invoice (AP)</option>
+          <option value="logistics">Commercial Freight Bill</option>
+          <option value="receipt">Store Purchase Receipt</option>
+        </select>
+        <svg class="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+        </svg>
+      </div>
+
+      <!-- Export JSON Button -->
+      <button id="btnExportJson" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700/80 text-slate-200 border border-slate-700/80 transition hover:border-slate-600">
+        <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+        </svg>
+        Export JSON
+      </button>
+
+      <!-- Primary Confirm & Save Button -->
+      <button id="btnConfirmSave" class="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg bg-brand-500 hover:bg-brand-600 text-white shadow-md shadow-brand-500/25 transition active:scale-95 focus:outline-none focus:ring-2 focus:ring-brand-400/40">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M5 13l4 4L19 7"></path>
+        </svg>
+        Confirm & Save
+      </button>
+    </div>
+  </header>
+
+  <!-- ========================================================================= -->
+  <!-- MAIN SPLIT SCREEN LAYOUT                                                 -->
+  <!-- ========================================================================= -->
+  <main class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-0 overflow-hidden" style="height: calc(100vh - 64px);">
+
+    <!-- ======================================================================= -->
+    <!-- LEFT PANEL: DOCUMENT UPLOAD & LIVE PREVIEW (5 OF 12 COLS)               -->
+    <!-- ======================================================================= -->
+    <section class="lg:col-span-5 border-r border-slate-800/80 bg-slate-900/40 flex flex-col h-full overflow-hidden relative">
+
+      <!-- Left Panel Top Controls (Visible when document is loaded) -->
+      <div id="previewControls" class="hidden h-12 border-b border-slate-800 bg-slate-900/90 px-4 flex items-center justify-between text-xs text-slate-300 z-10 shrink-0">
+        <!-- File info badge -->
+        <div class="flex items-center gap-2 min-w-0 pr-2">
+          <span id="previewFileIcon" class="w-2 h-2 rounded-full bg-brand-400"></span>
+          <span id="previewFileName" class="font-medium text-slate-200 truncate max-w-[140px] sm:max-w-[200px]" title="document.pdf">document.pdf</span>
+          <span id="previewFileSize" class="text-[11px] text-slate-500 shrink-0">(1.2 MB)</span>
+        </div>
+
+        <!-- Zoom & Rotate Actions -->
+        <div class="flex items-center gap-1 shrink-0">
+          <button id="btnZoomOut" class="p-1.5 rounded-md hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition" title="Zoom Out (-)">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M20 12H4"></path>
+            </svg>
+          </button>
+          <span id="zoomLevelText" class="text-[11px] font-mono text-slate-400 w-9 text-center">100%</span>
+          <button id="btnZoomIn" class="p-1.5 rounded-md hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition" title="Zoom In (+)">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M12 4v16m8-8H4"></path>
+            </svg>
+          </button>
+          <div class="w-px h-3.5 bg-slate-800 mx-1"></div>
+          <button id="btnRotate" class="p-1.5 rounded-md hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition" title="Rotate 90° Clockwise">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+          </button>
+          <button id="btnChangeFile" class="ml-1 px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700/80 text-brand-300 hover:text-brand-200 font-medium text-[11px] border border-slate-700 transition">
+            Change
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Stage Container: Upload Zone OR Live Document Preview -->
+      <div class="flex-1 relative flex items-center justify-center p-4 overflow-auto bg-slate-950/60" id="previewStage">
+
+        <!-- 1. DRAG & DROP UPLOAD ZONE (Visible initially) -->
+        <div id="dropzone" class="w-full max-w-md border-2 border-dashed border-slate-700/80 hover:border-brand-500/80 rounded-2xl p-8 flex flex-col items-center text-center transition-all duration-200 bg-slate-900/30 hover:bg-slate-900/60 group cursor-pointer">
+          <input type="file" id="fileInput" class="hidden" accept="image/png,image/jpeg,image/webp,application/pdf,.pdf" />
+          
+          <div class="w-16 h-16 rounded-2xl bg-brand-500/10 border border-brand-500/20 text-brand-400 flex items-center justify-center mb-4 group-hover:scale-105 group-hover:bg-brand-500/15 group-hover:shadow-lg group-hover:shadow-brand-500/20 transition-all duration-300">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+            </svg>
+          </div>
+
+          <h3 class="text-sm font-semibold text-white mb-1 group-hover:text-brand-300 transition">
+            Upload document to extract data
+          </h3>
+          <p class="text-xs text-slate-400 mb-4 max-w-xs leading-relaxed">
+            Drag & drop your files here, or click to browse from your device
+          </p>
+
+          <div class="flex items-center gap-1.5 mb-5">
+            <span class="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-slate-800 text-slate-300 border border-slate-700">PDF</span>
+            <span class="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-slate-800 text-slate-300 border border-slate-700">PNG</span>
+            <span class="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-slate-800 text-slate-300 border border-slate-700">JPG</span>
+            <span class="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-slate-800 text-slate-300 border border-slate-700">WEBP</span>
+          </div>
+
+          <button type="button" class="px-4 py-2 rounded-lg bg-brand-500/15 hover:bg-brand-500/25 text-brand-300 font-semibold text-xs border border-brand-500/30 transition">
+            Browse Document
+          </button>
+        </div>
+
+        <!-- 2. LIVE DOCUMENT VIEWER CONTAINER (Replaces dropzone on upload) -->
+        <div id="liveViewerContainer" class="hidden w-full h-full flex items-center justify-center relative overflow-hidden">
+          
+          <!-- Image Renderer -->
+          <div id="imageWrapper" class="hidden w-full h-full flex items-center justify-center p-2 overflow-auto">
+            <img id="imagePreview" src="" alt="Document Preview" class="max-w-full max-h-full object-contain rounded-lg shadow-2xl transition-transform duration-150 origin-center select-none" />
+          </div>
+
+          <!-- PDF Renderer (iframe/embed) -->
+          <div id="pdfWrapper" class="hidden w-full h-full rounded-lg overflow-hidden border border-slate-800 bg-slate-900 shadow-2xl">
+            <iframe id="pdfPreview" class="w-full h-full border-0" title="PDF Document Viewer"></iframe>
+          </div>
+
+        </div>
+
+        <!-- 3. SCANNING DOCUMENT ANIMATED OVERLAY (Active during extraction) -->
+        <div id="scanningOverlay" class="hidden absolute inset-0 bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center z-30 p-6">
+          <!-- Animated Radar Scanner -->
+          <div class="relative w-24 h-24 mb-6 flex items-center justify-center">
+            <div class="absolute inset-0 rounded-full border border-brand-500/20 animate-ping"></div>
+            <div class="absolute inset-2 rounded-full border border-brand-500/30 animate-pulse"></div>
+            <div class="w-14 h-14 rounded-full bg-brand-600/20 border border-brand-400/40 flex items-center justify-center shadow-lg shadow-brand-500/30">
+              <svg class="w-7 h-7 text-brand-300 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+              </svg>
+            </div>
+            <!-- Laser Scan Line -->
+            <div class="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-brand-400 to-transparent shadow-[0_0_12px_#a78bfa] animate-scan-line"></div>
+          </div>
+
+          <h4 class="text-base font-bold text-white mb-1.5 flex items-center gap-2">
+            <span>Scanning document...</span>
+          </h4>
+          <p id="scanningSubtext" class="text-xs text-brand-300/80 max-w-xs text-center mb-5">
+            Extracting layout hierarchy, invoice fields & tables via AI Vision...
+          </p>
+
+          <!-- Progress bar -->
+          <div class="w-64 h-1.5 bg-slate-800 rounded-full overflow-hidden mb-2">
+            <div id="scanningProgressBar" class="h-full bg-gradient-to-r from-brand-500 to-brand-300 transition-all duration-300 w-1/4"></div>
+          </div>
+          <span id="scanningProgressLabel" class="text-[11px] font-mono text-slate-400">Extracting fields: 35%</span>
+        </div>
+
+      </div>
+
+      <!-- Left Panel Bottom Hint -->
+      <div class="h-9 border-t border-slate-800/80 bg-slate-900/60 px-4 flex items-center justify-between text-[11px] text-slate-500 shrink-0">
+        <span class="flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+          Scroll preview to inspect original visual text
+        </span>
+        <span class="font-mono text-slate-400">FieldBi Client Engine</span>
+      </div>
+
+    </section>
+
+    <!-- ======================================================================= -->
+    <!-- RIGHT PANEL: DYNAMIC EXTRACTED FIELDS FORM (7 OF 12 COLS)               -->
+    <!-- ======================================================================= -->
+    <section class="lg:col-span-7 bg-slate-900/20 flex flex-col h-full overflow-hidden">
+      
+      <!-- Right Panel Top Bar: View Switcher (Form View vs Raw JSON) -->
+      <div class="h-14 border-b border-slate-800 bg-slate-900/80 px-5 flex items-center justify-between shrink-0">
+        <!-- View Toggle Buttons -->
+        <div class="flex items-center p-1 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold">
+          <button id="btnTabForm" class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-800 text-white shadow-sm transition">
+            <svg class="w-3.5 h-3.5 text-brand-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+            </svg>
+            Form View
+          </button>
+          <button id="btnTabJson" class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 transition">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>
+            </svg>
+            Raw JSON View
+          </button>
+        </div>
+
+        <!-- Filter & Summary Pill -->
+        <div class="flex items-center gap-3">
+          <div id="reviewBadge" class="hidden items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-medium">
+            <svg class="w-3.5 h-3.5 text-amber-400 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+            </svg>
+            <span id="reviewCountText">2 Needs Review</span>
+          </div>
+
+          <span id="fieldsTotalCount" class="text-xs text-slate-400 font-medium">0 Fields Extracted</span>
+        </div>
+      </div>
+
+      <!-- Scrollable Tab Content Container -->
+      <div class="flex-1 overflow-y-auto p-6 space-y-6" id="formViewContainer">
+        
+        <!-- Search & Custom Field Row -->
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div class="relative flex-1">
+            <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+            </svg>
+            <input type="text" id="fieldSearchInput" placeholder="Filter extracted keys or values..." class="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition" />
+          </div>
+
+          <button id="btnAddCustomField" class="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700/80 text-brand-300 hover:text-brand-200 border border-slate-700 text-xs font-semibold transition active:scale-95 shrink-0">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M12 4v16m8-8H4"></path>
+            </svg>
+            Add Custom Field
+          </button>
+        </div>
+
+        <!-- 1. Extracted Key-Value Fields Card List -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
+          <div class="flex items-center justify-between border-b border-slate-800/80 pb-3">
+            <div>
+              <h2 class="text-sm font-bold text-white tracking-tight">Extracted Document Key-Values</h2>
+              <p class="text-[11px] text-slate-400">Review & edit normalized labels or values. Empty fields are highlighted in amber.</p>
+            </div>
+            <span class="text-[11px] text-slate-500 font-mono">Row Actions: Edit / Remove</span>
+          </div>
+
+          <!-- Dynamic Field Rows Container -->
+          <div id="dynamicFieldsList" class="space-y-2.5 pt-1">
+            <!-- Rendered dynamically via JS -->
+            <div class="py-12 text-center text-slate-500 text-xs">
+              Upload a document or choose a sample above to extract fields.
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Dynamic Table / Line Items Section (Rendered if table exists in JSON) -->
+        <div id="lineItemsCard" class="hidden bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3.5">
+          <div class="flex items-center justify-between border-b border-slate-800/80 pb-3">
+            <div>
+              <div class="flex items-center gap-2">
+                <h2 class="text-sm font-bold text-white tracking-tight">Line Items Table</h2>
+                <span id="lineItemsCountBadge" class="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-brand-500/15 text-brand-300 border border-brand-500/25">0 items</span>
+              </div>
+              <p class="text-[11px] text-slate-400">Extracted tabular rows and itemized line breakdown</p>
+            </div>
+            
+            <button id="btnAddLineItem" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-brand-500/10 hover:bg-brand-500/20 text-brand-300 border border-brand-500/30 text-xs font-semibold transition">
+              + Add Row
+            </button>
+          </div>
+
+          <!-- Table Wrapper -->
+          <div class="border border-slate-800 rounded-xl overflow-x-auto bg-slate-950/60">
+            <table class="w-full text-left text-xs border-collapse" id="lineItemsTable">
+              <thead class="bg-slate-900 border-b border-slate-800 text-[11px] uppercase tracking-wider text-slate-400 font-semibold" id="tableHeaderRow">
+                <!-- Dynamically populated table headers -->
+              </thead>
+              <tbody class="divide-y divide-slate-800/60" id="tableBodyRows">
+                <!-- Dynamically populated line item rows -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Raw JSON View Container (Toggled via button) -->
+      <div class="hidden flex-1 flex-col overflow-hidden p-6 space-y-4" id="rawJsonViewContainer">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-sm font-bold text-white">Raw Document JSON Payload</h2>
+            <p class="text-[11px] text-slate-400">Directly inspect, edit, or copy the backend structured JSON object.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="btnFormatJson" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300 border border-slate-700 transition">
+              Prettify
+            </button>
+            <button id="btnCopyJson" class="px-3 py-1.5 rounded-lg bg-brand-500/15 hover:bg-brand-500/25 text-brand-300 border border-brand-500/30 text-xs font-semibold transition flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path>
+              </svg>
+              <span>Copy JSON</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="flex-1 rounded-xl border border-slate-800 bg-slate-950 p-4 font-mono text-xs overflow-auto relative">
+          <textarea id="rawJsonTextarea" class="w-full h-full bg-transparent text-brand-200 outline-none resize-none font-mono leading-relaxed" spellcheck="false"></textarea>
+        </div>
+      </div>
+
+      <!-- Right Panel Footer -->
+      <footer class="h-14 border-t border-slate-800 bg-slate-900/90 px-6 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-3 text-xs text-slate-400">
+          <span id="footerStatusText">Ready for edits</span>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <button id="btnResetData" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition">
+            Reset All
+          </button>
+          <button id="btnFooterConfirm" class="px-4 py-2 rounded-lg bg-brand-500 hover:bg-brand-600 text-white font-semibold text-xs shadow-md shadow-brand-500/20 transition active:scale-95">
+            Confirm & Save Data
+          </button>
+        </div>
+      </footer>
+
+    </section>
+
+  </main>
+
+  <!-- ========================================================================= -->
+  <!-- TOAST NOTIFICATION CONTAINER                                             -->
+  <!-- ========================================================================= -->
+  <div id="toastContainer" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- ========================================================================= -->
+  <!-- CLIENT LOGIC                                                             -->
+  <!-- ========================================================================= -->
+  <script>
+    // --- Mock Sample Data Sets ---
+    const MOCK_DATASETS = {
+      invoice: {
+        vendor_name: "SpiceImporter Ltd.",
+        invoice_number: "INV-20281",
+        invoice_date: "2017-03-02",
+        due_date: "2017-03-16",
+        po_number: "PO-1234",
+        payment_terms: "14 days net",
+        billed_to: "Culinary Essentials Corp",
+        customer_tax_id: "", // intentionally empty to demo amber "Needs review" highlight
+        currency: "USD",
+        vendor_tax_id: "VAT-GB-882914",
+        subtotal: "357.50",
+        tax_rate: "19%",
+        tax_amount: "67.92",
+        shipping_fee: null, // empty to demo review state
+        grand_total: "425.42",
+        line_items: [
+          { sku: "SP-001", description: "Organic Madagascar Vanilla Beans", qty: 25, price: "6.50", total: "162.50" },
+          { sku: "SP-008", description: "Ceylon Cinnamon Quills (Grade A)", qty: 15, price: "8.00", total: "120.00" },
+          { sku: "SP-014", description: "Spanish Saffron Filaments (1g)", qty: 5, price: "15.00", total: "75.00" }
+        ]
+      },
+      logistics: {
+        carrier_name: "TransPacific Cargo Express",
+        bill_of_lading: "BOL-994821-X",
+        tracking_code: "TPX-8827361",
+        vessel_name: "Ever Forward 042W",
+        port_of_loading: "Singapore (SGSIN)",
+        port_of_discharge: "Los Angeles (USLAX)",
+        consignee_name: "Pacific Rim Logistics Co.",
+        customs_declaration_no: "", // empty demo
+        declared_value: "$84,250.00",
+        freight_charges: "$3,450.00",
+        line_items: [
+          { container_no: "TEMU-482910-2", type: "40ft High Cube", gross_weight: "18,400 kg", packages: 480, status: "Cleared" },
+          { container_no: "MSCU-883921-9", type: "20ft Standard", gross_weight: "9,250 kg", packages: 240, status: "Inspection" }
+        ]
+      },
+      receipt: {
+        store_name: "SuperMart Central",
+        store_address: "742 Evergreen Terrace",
+        cashier: "Alex M.",
+        transaction_id: "TX-448291",
+        date: "2026-10-18 14:22",
+        payment_method: "Visa ending in 4242",
+        auth_code: "APP-88421",
+        discount_coupon: "", // empty
+        subtotal: "$48.80",
+        sales_tax: "$4.15",
+        total: "$52.95",
+        line_items: [
+          { item: "Whole Milk 1 Gal", qty: 2, price: "$3.89", total: "$7.78" },
+          { item: "Artisan Sourdough Loaf", qty: 1, price: "$5.49", total: "$5.49" },
+          { item: "Dark Roast Coffee Beans 12oz", qty: 2, price: "$14.99", total: "$29.98" },
+          { item: "Avocados (Bag of 4)", qty: 1, price: "$5.55", total: "$5.55" }
+        ]
+      }
+    };
+
+    // --- State Variables ---
+    let currentExtractedData = {};
+    let currentFile = null;
+    let currentZoom = 100;
+    let currentRotation = 0;
+    let isScanning = false;
+
+    // --- DOM Elements ---
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+    const previewStage = document.getElementById('previewStage');
+    const previewControls = document.getElementById('previewControls');
+    const previewFileName = document.getElementById('previewFileName');
+    const previewFileSize = document.getElementById('previewFileSize');
+    const liveViewerContainer = document.getElementById('liveViewerContainer');
+    const imageWrapper = document.getElementById('imageWrapper');
+    const imagePreview = document.getElementById('imagePreview');
+    const pdfWrapper = document.getElementById('pdfWrapper');
+    const pdfPreview = document.getElementById('pdfPreview');
+    const scanningOverlay = document.getElementById('scanningOverlay');
+    const scanningProgressBar = document.getElementById('scanningProgressBar');
+    const scanningProgressLabel = document.getElementById('scanningProgressLabel');
+    const zoomLevelText = document.getElementById('zoomLevelText');
+    const docStatusText = document.getElementById('docStatusText');
+    const docStatusBadge = document.getElementById('docStatusBadge');
+
+    // Right Panel Elements
+    const dynamicFieldsList = document.getElementById('dynamicFieldsList');
+    const lineItemsCard = document.getElementById('lineItemsCard');
+    const lineItemsTable = document.getElementById('lineItemsTable');
+    const tableHeaderRow = document.getElementById('tableHeaderRow');
+    const tableBodyRows = document.getElementById('tableBodyRows');
+    const lineItemsCountBadge = document.getElementById('lineItemsCountBadge');
+    const fieldsTotalCount = document.getElementById('fieldsTotalCount');
+    const reviewBadge = document.getElementById('reviewBadge');
+    const reviewCountText = document.getElementById('reviewCountText');
+    const fieldSearchInput = document.getElementById('fieldSearchInput');
+
+    // Tabs & Modals
+    const btnTabForm = document.getElementById('btnTabForm');
+    const btnTabJson = document.getElementById('btnTabJson');
+    const formViewContainer = document.getElementById('formViewContainer');
+    const rawJsonViewContainer = document.getElementById('rawJsonViewContainer');
+    const rawJsonTextarea = document.getElementById('rawJsonTextarea');
+
+    // Action Buttons
+    const btnZoomIn = document.getElementById('btnZoomIn');
+    const btnZoomOut = document.getElementById('btnZoomOut');
+    const btnRotate = document.getElementById('btnRotate');
+    const btnChangeFile = document.getElementById('btnChangeFile');
+    const btnAddCustomField = document.getElementById('btnAddCustomField');
+    const btnAddLineItem = document.getElementById('btnAddLineItem');
+    const btnConfirmSave = document.getElementById('btnConfirmSave');
+    const btnFooterConfirm = document.getElementById('btnFooterConfirm');
+    const btnExportJson = document.getElementById('btnExportJson');
+    const btnCopyJson = document.getElementById('btnCopyJson');
+    const btnFormatJson = document.getElementById('btnFormatJson');
+    const btnResetData = document.getElementById('btnResetData');
+    const sampleSelect = document.getElementById('sampleSelect');
+
+    // =========================================================================
+    // 1. FILE UPLOAD & DRAG AND DROP HANDLING
+    // =========================================================================
+    dropzone.addEventListener('click', () => fileInput.click());
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+      dropzone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropzone.classList.add('border-brand-400', 'bg-slate-900/80');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+      dropzone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropzone.classList.remove('border-brand-400', 'bg-slate-900/80');
+      });
+    });
+
+    dropzone.addEventListener('drop', (e) => {
+      const files = e.dataTransfer.files;
+      if (files && files.length > 0) {
+        handleFileSelected(files[0]);
+      }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        handleFileSelected(e.target.files[0]);
+      }
+    });
+
+    btnChangeFile.addEventListener('click', () => fileInput.click());
+
+    function handleFileSelected(file) {
+      currentFile = file;
+      previewFileName.textContent = file.name;
+      previewFileSize.textContent = formatBytes(file.size);
+
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      const isImg = file.type.startsWith('image/');
+
+      if (!isPdf && !isImg) {
+        showToast('Please upload a valid image (PNG, JPG, WEBP) or PDF.', 'warning');
+        return;
+      }
+
+      // Hide dropzone, show live viewer & controls
+      dropzone.classList.add('hidden');
+      previewControls.classList.remove('hidden');
+      liveViewerContainer.classList.remove('hidden');
+
+      const fileUrl = URL.createObjectURL(file);
+
+      if (isPdf) {
+        imageWrapper.classList.add('hidden');
+        pdfWrapper.classList.remove('hidden');
+        pdfPreview.src = fileUrl;
+      } else {
+        pdfWrapper.classList.add('hidden');
+        imageWrapper.classList.remove('hidden');
+        imagePreview.src = fileUrl;
+        resetTransform();
+      }
+
+      docStatusText.textContent = `File loaded: ${file.name}`;
+      docStatusBadge.classList.remove('hidden');
+
+      // Trigger 2-second simulated AI Vision scanning state
+      simulateAiScanning(file.name);
+    }
+
+    // =========================================================================
+    // 2. SIMULATED 2-SECOND AI SCANNING STATE
+    // =========================================================================
+    function simulateAiScanning(docName = 'document') {
+      isScanning = true;
+      scanningOverlay.classList.remove('hidden');
+      docStatusText.textContent = 'AI Vision Extraction in Progress...';
+
+      let progress = 10;
+      scanningProgressBar.style.width = '10%';
+      scanningProgressLabel.textContent = 'Analyzing layout: 10%';
+
+      const interval = setInterval(() => {
+        progress += Math.floor(Math.random() * 18) + 12;
+        if (progress > 95) progress = 95;
+        scanningProgressBar.style.width = `${progress}%`;
+        scanningProgressLabel.textContent = `Extracting fields & tables: ${progress}%`;
+      }, 300);
+
+      setTimeout(() => {
+        clearInterval(interval);
+        scanningProgressBar.style.width = '100%';
+        scanningProgressLabel.textContent = 'Extraction Complete (100%)';
+
+        setTimeout(() => {
+          scanningOverlay.classList.add('hidden');
+          isScanning = false;
+          docStatusText.textContent = `Extracted 100% • ${docName}`;
+
+          // Pick appropriate mock dataset based on document name or default to invoice
+          let chosenData = MOCK_DATASETS.invoice;
+          const lower = docName.toLowerCase();
+          if (lower.includes('logistics') || lower.includes('freight') || lower.includes('bol')) {
+            chosenData = MOCK_DATASETS.logistics;
+          } else if (lower.includes('receipt') || lower.includes('mart') || lower.includes('store')) {
+            chosenData = MOCK_DATASETS.receipt;
+          }
+
+          loadExtractedData(chosenData);
+          showToast('Data extracted successfully via AI Vision!', 'success');
+        }, 350);
+      }, 2000);
+    }
+
+    // =========================================================================
+    // 3. ZOOM & ROTATE CONTROLS FOR IMAGE PREVIEW
+    // =========================================================================
+    btnZoomIn.addEventListener('click', () => {
+      currentZoom = Math.min(250, currentZoom + 20);
+      applyTransform();
+    });
+
+    btnZoomOut.addEventListener('click', () => {
+      currentZoom = Math.max(40, currentZoom - 20);
+      applyTransform();
+    });
+
+    btnRotate.addEventListener('click', () => {
+      currentRotation = (currentRotation + 90) % 360;
+      applyTransform();
+    });
+
+    function resetTransform() {
+      currentZoom = 100;
+      currentRotation = 0;
+      applyTransform();
+    }
+
+    function applyTransform() {
+      zoomLevelText.textContent = `${currentZoom}%`;
+      imagePreview.style.transform = `scale(${currentZoom / 100}) rotate(${currentRotation}deg)`;
+    }
+
+    // =========================================================================
+    // 4. DYNAMIC EXTRACTED FIELDS RENDERING
+    // =========================================================================
+    function loadExtractedData(data) {
+      // Deep clone to prevent mutating original templates
+      currentExtractedData = JSON.parse(JSON.stringify(data));
+      renderAll();
+    }
+
+    function renderAll() {
+      renderDynamicFields();
+      renderLineItemsTable();
+      updateJsonTextarea();
+      updateHeaderCounts();
+    }
+
+    function renderDynamicFields(filterQuery = '') {
+      dynamicFieldsList.innerHTML = '';
+      const query = filterQuery.toLowerCase().trim();
+
+      const scalarKeys = Object.keys(currentExtractedData).filter(k => {
+        return !Array.isArray(currentExtractedData[k]) && typeof currentExtractedData[k] !== 'object';
+      });
+
+      if (scalarKeys.length === 0) {
+        dynamicFieldsList.innerHTML = `
+          <div class="py-8 text-center text-slate-500 text-xs">
+            No scalar key-value fields found in document data.
+          </div>
+        `;
+        return;
+      }
+
+      let renderedCount = 0;
+
+      scalarKeys.forEach(key => {
+        const val = currentExtractedData[key];
+        const valStr = val === null || val === undefined ? '' : String(val);
+        const isEmpty = valStr.trim().length === 0;
+
+        // Apply search filter if active
+        if (query && !key.toLowerCase().includes(query) && !valStr.toLowerCase().includes(query)) {
+          return;
+        }
+
+        renderedCount++;
+        const row = document.createElement('div');
+        row.className = `group relative rounded-xl border p-3 transition-all duration-150 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 ${
+          isEmpty
+            ? 'bg-amber-500/5 border-amber-500/40 hover:border-amber-500/60 shadow-sm shadow-amber-500/5'
+            : 'bg-slate-950/60 border-slate-800 hover:border-slate-700/80'
+        }`;
+
+        row.innerHTML = `
+          <!-- Key Label Input -->
+          <div class="w-full sm:w-5/12 flex items-center gap-2">
+            <span class="text-slate-500 select-none text-xs font-mono">#</span>
+            <input 
+              type="text" 
+              value="${escapeHtml(key)}" 
+              data-original-key="${escapeHtml(key)}" 
+              class="field-key-input w-full bg-slate-900/90 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-300 focus:outline-none focus:ring-1 focus:ring-brand-400 focus:border-brand-500 transition font-mono"
+              placeholder="Field name"
+            />
+          </div>
+
+          <!-- Divider on Mobile -->
+          <span class="hidden sm:inline text-slate-600 select-none">→</span>
+
+          <!-- Value Input -->
+          <div class="w-full sm:w-6/12 relative">
+            <input 
+              type="text" 
+              value="${escapeHtml(valStr)}" 
+              data-key="${escapeHtml(key)}" 
+              class="field-val-input w-full bg-slate-900 border rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 transition ${
+                isEmpty
+                  ? 'border-amber-500/60 focus:ring-amber-400/50 text-amber-200'
+                  : 'border-slate-800 focus:ring-brand-400 focus:border-brand-500'
+              }"
+              placeholder="Enter value..."
+            />
+            ${
+              isEmpty
+                ? `<span class="absolute right-2.5 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-semibold border border-amber-500/30">Needs review</span>`
+                : ''
+            }
+          </div>
+
+          <!-- Action buttons -->
+          <div class="flex items-center justify-end gap-1 sm:w-1/12 shrink-0">
+            <button 
+              type="button" 
+              class="btn-delete-field p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition" 
+              title="Delete field"
+              data-key="${escapeHtml(key)}"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+              </svg>
+            </button>
+          </div>
+        `;
+
+        dynamicFieldsList.appendChild(row);
+      });
+
+      if (renderedCount === 0 && query) {
+        dynamicFieldsList.innerHTML = `
+          <div class="py-8 text-center text-slate-500 text-xs">
+            No fields matching "<span class="text-slate-300">${escapeHtml(query)}</span>"
+          </div>
+        `;
+      }
+
+      attachFieldEventListeners();
+    }
+
+    function attachFieldEventListeners() {
+      // 1. Value input change handler
+      document.querySelectorAll('.field-val-input').forEach(input => {
+        input.addEventListener('input', (e) => {
+          const key = e.target.getAttribute('data-key');
+          currentExtractedData[key] = e.target.value;
+          updateJsonTextarea();
+          updateHeaderCounts();
+
+          // Refresh amber warning border
+          const isEmpty = e.target.value.trim().length === 0;
+          const parentRow = e.target.closest('.group');
+          if (isEmpty) {
+            parentRow.classList.add('bg-amber-500/5', 'border-amber-500/40');
+            parentRow.classList.remove('bg-slate-950/60', 'border-slate-800');
+          } else {
+            parentRow.classList.remove('bg-amber-500/5', 'border-amber-500/40');
+            parentRow.classList.add('bg-slate-950/60', 'border-slate-800');
+          }
+        });
+      });
+
+      // 2. Key label change handler
+      document.querySelectorAll('.field-key-input').forEach(input => {
+        input.addEventListener('change', (e) => {
+          const oldKey = e.target.getAttribute('data-original-key');
+          const newKey = e.target.value.trim();
+
+          if (!newKey || newKey === oldKey) {
+            e.target.value = oldKey;
+            return;
+          }
+
+          const val = currentExtractedData[oldKey];
+          delete currentExtractedData[oldKey];
+          currentExtractedData[newKey] = val;
+          renderDynamicFields(fieldSearchInput.value);
+          updateJsonTextarea();
+          showToast(`Renamed key "${oldKey}" to "${newKey}"`, 'info');
+        });
+      });
+
+      // 3. Delete field handler
+      document.querySelectorAll('.btn-delete-field').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const key = e.currentTarget.getAttribute('data-key');
+          if (confirm(`Delete extracted field "${key}"?`)) {
+            delete currentExtractedData[key];
+            renderDynamicFields(fieldSearchInput.value);
+            updateJsonTextarea();
+            updateHeaderCounts();
+            showToast(`Deleted field "${key}"`, 'info');
+          }
+        });
+      });
+    }
+
+    // =========================================================================
+    // 5. LINE ITEMS / TABLE ROWS RENDERING
+    // =========================================================================
+    function renderLineItemsTable() {
+      const tableKey = findTableKey();
+
+      if (!tableKey || !Array.isArray(currentExtractedData[tableKey]) || currentExtractedData[tableKey].length === 0) {
+        lineItemsCard.classList.add('hidden');
+        return;
+      }
+
+      lineItemsCard.classList.remove('hidden');
+      const items = currentExtractedData[tableKey];
+      lineItemsCountBadge.textContent = `${items.length} row${items.length === 1 ? '' : 's'}`;
+
+      // Extract unique column keys across all rows
+      const colSet = new Set();
+      items.forEach(row => {
+        if (typeof row === 'object' && row !== null) {
+          Object.keys(row).forEach(k => colSet.add(k));
+        }
+      });
+      const columns = Array.from(colSet);
+
+      // Render Header
+      tableHeaderRow.innerHTML = `
+        <th class="py-2.5 px-3 w-10 text-center">#</th>
+        ${columns.map(c => `<th class="py-2.5 px-3 capitalize">${escapeHtml(c.replace(/_/g, ' '))}</th>`).join('')}
+        <th class="py-2.5 px-3 w-12 text-center"></th>
+      `;
+
+      // Render Rows
+      tableBodyRows.innerHTML = '';
+      items.forEach((row, idx) => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-900/50 transition';
+
+        let cellsHtml = `<td class="py-2 px-3 font-mono text-[11px] text-slate-500 text-center select-none">${idx + 1}</td>`;
+
+        columns.forEach(col => {
+          const cellVal = row[col] !== undefined && row[col] !== null ? String(row[col]) : '';
+          cellsHtml += `
+            <td class="py-1 px-2">
+              <input 
+                type="text" 
+                value="${escapeHtml(cellVal)}" 
+                data-row="${idx}" 
+                data-col="${escapeHtml(col)}" 
+                class="tbl-cell-input w-full bg-transparent hover:bg-slate-900 focus:bg-slate-900 border border-transparent hover:border-slate-800 focus:border-brand-500 rounded px-2 py-1 text-xs text-slate-200 outline-none transition"
+              />
+            </td>
+          `;
+        });
+
+        cellsHtml += `
+          <td class="py-1 px-2 text-center">
+            <button type="button" class="btn-del-row p-1 text-slate-500 hover:text-rose-400 rounded transition" data-row="${idx}" title="Delete row">
+              ✕
+            </button>
+          </td>
+        `;
+
+        tr.innerHTML = cellsHtml;
+        tableBodyRows.appendChild(tr);
+      });
+
+      // Cell Edit Listeners
+      document.querySelectorAll('.tbl-cell-input').forEach(input => {
+        input.addEventListener('input', (e) => {
+          const rowIdx = parseInt(e.target.getAttribute('data-row'), 10);
+          const colKey = e.target.getAttribute('data-col');
+          currentExtractedData[tableKey][rowIdx][colKey] = e.target.value;
+          updateJsonTextarea();
+        });
+      });
+
+      // Row Delete Listeners
+      document.querySelectorAll('.btn-del-row').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const rowIdx = parseInt(e.currentTarget.getAttribute('data-row'), 10);
+          currentExtractedData[tableKey].splice(rowIdx, 1);
+          renderLineItemsTable();
+          updateJsonTextarea();
+          showToast('Removed table row', 'info');
+        });
+      });
+    }
+
+    function findTableKey() {
+      if (Array.isArray(currentExtractedData.line_items)) return 'line_items';
+      if (Array.isArray(currentExtractedData.items)) return 'items';
+      if (Array.isArray(currentExtractedData.table)) return 'table';
+      // Find first array property
+      return Object.keys(currentExtractedData).find(k => Array.isArray(currentExtractedData[k]));
+    }
+
+    // =========================================================================
+    // 6. ADD CUSTOM FIELD & LINE ITEM
+    // =========================================================================
+    btnAddCustomField.addEventListener('click', () => {
+      let counter = 1;
+      let newKey = `custom_field_${counter}`;
+      while (currentExtractedData.hasOwnProperty(newKey)) {
+        counter++;
+        newKey = `custom_field_${counter}`;
+      }
+
+      currentExtractedData[newKey] = '';
+      renderDynamicFields();
+      updateJsonTextarea();
+      updateHeaderCounts();
+
+      // Focus the newly added row
+      setTimeout(() => {
+        const inputs = document.querySelectorAll('.field-key-input');
+        if (inputs.length > 0) {
+          const lastInput = inputs[inputs.length - 1];
+          lastInput.focus();
+          lastInput.select();
+        }
+      }, 50);
+
+      showToast(`Added custom field "${newKey}"`, 'info');
+    });
+
+    btnAddLineItem.addEventListener('click', () => {
+      const tableKey = findTableKey() || 'line_items';
+      if (!Array.isArray(currentExtractedData[tableKey])) {
+        currentExtractedData[tableKey] = [];
+      }
+
+      // Infer structure from existing row or provide defaults
+      let newRow = {};
+      if (currentExtractedData[tableKey].length > 0) {
+        Object.keys(currentExtractedData[tableKey][0]).forEach(k => newRow[k] = '');
+      } else {
+        newRow = { description: 'New Item', qty: 1, price: '0.00', total: '0.00' };
+      }
+
+      currentExtractedData[tableKey].push(newRow);
+      renderLineItemsTable();
+      updateJsonTextarea();
+      showToast('Added new line item row', 'info');
+    });
+
+    // Search filter live filter
+    fieldSearchInput.addEventListener('input', (e) => {
+      renderDynamicFields(e.target.value);
+    });
+
+    // =========================================================================
+    // 7. TAB SWITCHING (FORM VIEW vs RAW JSON VIEW)
+    // =========================================================================
+    btnTabForm.addEventListener('click', () => switchTab('form'));
+    btnTabJson.addEventListener('click', () => switchTab('json'));
+
+    function switchTab(tab) {
+      if (tab === 'form') {
+        btnTabForm.classList.add('bg-slate-800', 'text-white', 'shadow-sm');
+        btnTabForm.classList.remove('text-slate-400');
+        btnTabJson.classList.remove('bg-slate-800', 'text-white', 'shadow-sm');
+        btnTabJson.classList.add('text-slate-400');
+
+        formViewContainer.classList.remove('hidden');
+        rawJsonViewContainer.classList.add('hidden');
+      } else {
+        btnTabJson.classList.add('bg-slate-800', 'text-white', 'shadow-sm');
+        btnTabJson.classList.remove('text-slate-400');
+        btnTabForm.classList.remove('bg-slate-800', 'text-white', 'shadow-sm');
+        btnTabForm.classList.add('text-slate-400');
+
+        formViewContainer.classList.add('hidden');
+        rawJsonViewContainer.classList.remove('hidden');
+        updateJsonTextarea();
+      }
+    }
+
+    function updateJsonTextarea() {
+      rawJsonTextarea.value = JSON.stringify(currentExtractedData, null, 2);
+    }
+
+    // Two-way sync when user edits the JSON text directly
+    rawJsonTextarea.addEventListener('change', () => {
+      try {
+        const parsed = JSON.parse(rawJsonTextarea.value);
+        currentExtractedData = parsed;
+        renderDynamicFields();
+        renderLineItemsTable();
+        updateHeaderCounts();
+        showToast('JSON updated successfully!', 'success');
+      } catch (err) {
+        showToast('Invalid JSON syntax: ' + err.message, 'warning');
+      }
+    });
+
+    btnFormatJson.addEventListener('click', () => {
+      try {
+        const parsed = JSON.parse(rawJsonTextarea.value);
+        rawJsonTextarea.value = JSON.stringify(parsed, null, 2);
+        showToast('Formatted JSON code', 'info');
+      } catch (err) {
+        showToast('Cannot format invalid JSON: ' + err.message, 'warning');
+      }
+    });
+
+    btnCopyJson.addEventListener('click', async () => {
+      const code = JSON.stringify(currentExtractedData, null, 2);
+      await navigator.clipboard.writeText(code);
+      showToast('Copied JSON to clipboard!', 'success');
+    });
+
+    btnExportJson.addEventListener('click', () => {
+      const code = JSON.stringify(currentExtractedData, null, 2);
+      const blob = new Blob([code], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const filename = (currentFile ? currentFile.name.replace(/\.[^/.]+$/, '') : 'extracted_document') + '.json';
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast(`Exported ${filename}`, 'success');
+    });
+
+    // =========================================================================
+    // 8. HEADER COUNTS & CONFIRM SAVE ACTIONS
+    // =========================================================================
+    function updateHeaderCounts() {
+      const scalarKeys = Object.keys(currentExtractedData).filter(k => {
+        return !Array.isArray(currentExtractedData[k]) && typeof currentExtractedData[k] !== 'object';
+      });
+
+      let emptyCount = 0;
+      scalarKeys.forEach(k => {
+        const val = currentExtractedData[k];
+        if (val === null || val === undefined || String(val).trim().length === 0) {
+          emptyCount++;
+        }
+      });
+
+      fieldsTotalCount.textContent = `${scalarKeys.length} Fields Extracted`;
+
+      if (emptyCount > 0) {
+        reviewBadge.classList.remove('hidden');
+        reviewBadge.classList.add('inline-flex');
+        reviewCountText.textContent = `${emptyCount} Needs Review`;
+      } else {
+        reviewBadge.classList.add('hidden');
+        reviewBadge.classList.remove('inline-flex');
+      }
+    }
+
+    [btnConfirmSave, btnFooterConfirm].forEach(btn => {
+      btn.addEventListener('click', () => {
+        console.log('[Document Data Extractor] Confirmed Data Payload:', currentExtractedData);
+        showToast('✓ Document data verified and saved successfully!', 'success');
+      });
+    });
+
+    btnResetData.addEventListener('click', () => {
+      if (confirm('Reset all extracted fields and line items?')) {
+        currentExtractedData = {};
+        renderAll();
+        showToast('All fields reset', 'info');
+      }
+    });
+
+    // Sample Selector Trigger
+    sampleSelect.addEventListener('change', (e) => {
+      const val = e.target.value;
+      if (MOCK_DATASETS[val]) {
+        // Mock a sample visual preview canvas or placeholder
+        renderMockSamplePreview(val);
+        simulateAiScanning(`sample_${val}.pdf`);
+      }
+      e.target.value = '';
+    });
+
+    function renderMockSamplePreview(type) {
+      dropzone.classList.add('hidden');
+      previewControls.classList.remove('hidden');
+      liveViewerContainer.classList.remove('hidden');
+      pdfWrapper.classList.add('hidden');
+      imageWrapper.classList.remove('hidden');
+
+      previewFileName.textContent = `${type}_document_sample.png`;
+      previewFileSize.textContent = '380 KB';
+
+      // Create an SVG invoice illustration data URL
+      const canvas = document.createElement('canvas');
+      canvas.width = 680;
+      canvas.height = 880;
+      const ctx = canvas.getContext('2d');
+
+      // Background Paper
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Top Header bar
+      ctx.fillStyle = '#1e1b4b';
+      ctx.fillRect(40, 40, canvas.width - 80, 70);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 22px sans-serif';
+      ctx.fillText(type.toUpperCase() + ' STATEMENT', 65, 84);
+
+      // Metadata Lines
+      ctx.fillStyle = '#334155';
+      ctx.font = '14px sans-serif';
+      ctx.fillText('Issued to: Culinary Enterprises Corp', 65, 160);
+      ctx.fillText('Reference: REF-2026-X88', 65, 185);
+      ctx.fillText('Date: October 2026', 65, 210);
+
+      // Simulated Lines
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillRect(65, 250, canvas.width - 130, 2);
+      ctx.fillRect(65, 340, canvas.width - 130, 1.5);
+      ctx.fillRect(65, 410, canvas.width - 130, 1.5);
+      ctx.fillRect(65, 480, canvas.width - 130, 1.5);
+
+      ctx.fillStyle = '#475569';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.fillText('ITEM / CODE', 65, 280);
+      ctx.fillText('QTY', 360, 280);
+      ctx.fillText('PRICE', 440, 280);
+      ctx.fillText('TOTAL', 540, 280);
+
+      // Total Block
+      ctx.fillStyle = '#7c3aed';
+      ctx.fillRect(canvas.width - 260, 560, 195, 55);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 18px sans-serif';
+      ctx.fillText('TOTAL: $425.42', canvas.width - 240, 595);
+
+      imagePreview.src = canvas.toDataURL('image/png');
+      resetTransform();
+    }
+
+    // =========================================================================
+    // 9. UTILITY HELPERS & TOAST FEEDBACK
+    // =========================================================================
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function showToast(message, type = 'info') {
+      const toast = document.createElement('div');
+      const colors = {
+        success: 'bg-emerald-950/90 text-emerald-200 border-emerald-500/40',
+        warning: 'bg-amber-950/90 text-amber-200 border-amber-500/40',
+        info: 'bg-slate-900/95 text-slate-100 border-slate-700/80',
+      };
+
+      toast.className = `px-4 py-2.5 rounded-xl border shadow-xl text-xs font-semibold backdrop-blur-md flex items-center gap-2 transform translate-y-4 opacity-0 transition-all duration-200 pointer-events-auto ${colors[type] || colors.info}`;
+      
+      const icons = {
+        success: '<svg class="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>',
+        warning: '<svg class="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>',
+        info: '<svg class="w-4 h-4 text-brand-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>'
+      };
+
+      toast.innerHTML = `${icons[type] || icons.info}<span>${escapeHtml(message)}</span>`;
+      const container = document.getElementById('toastContainer');
+      container.appendChild(toast);
+
+      requestAnimationFrame(() => {
+        toast.classList.remove('translate-y-4', 'opacity-0');
+      });
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 250);
+      }, 3000);
+    }
+
+    // Auto-load invoice sample on startup for immediate interactive testing
+    window.addEventListener('DOMContentLoaded', () => {
+      renderMockSamplePreview('invoice');
+      loadExtractedData(MOCK_DATASETS.invoice);
+    });
+  </script>
+</body>
+</html>

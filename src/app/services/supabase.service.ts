@@ -64,7 +64,12 @@ export class SupabaseService {
     extractedJson: any,
     rawText: string = '',
     file?: File | Blob,
-  ): Promise<{ success: boolean; invoiceId?: string; data?: any; error?: string }> {
+  ): Promise<{
+    success: boolean;
+    invoiceId?: string;
+    data?: any;
+    error?: string;
+  }> {
     const client = this.getClient();
     if (!client) {
       return {
@@ -79,7 +84,8 @@ export class SupabaseService {
     // Optional: Upload original PDF/Image to Supabase Storage bucket 'invoices' first
     if (file) {
       try {
-        const rawFileName = file instanceof File ? file.name : `invoice_${Date.now()}.jpg`;
+        const rawFileName =
+          file instanceof File ? file.name : `invoice_${Date.now()}.jpg`;
         const fileName = `${Date.now()}_${rawFileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
         const { error: uploadError } = await client.storage
           .from('invoices')
@@ -151,9 +157,15 @@ export class SupabaseService {
       const fullRawText =
         rawText || extractedJson.rawOcrText || extractedJson.raw_text || '';
 
-      const poNumber = extractedJson.po_number || extractedJson.poNumber || null;
-      const paymentTerms = extractedJson.payment_terms || extractedJson.paymentTerms || null;
-      const billedTo = extractedJson.billed_to || extractedJson.billTo?.name || extractedJson.billedTo || null;
+      const poNumber =
+        extractedJson.po_number || extractedJson.poNumber || null;
+      const paymentTerms =
+        extractedJson.payment_terms || extractedJson.paymentTerms || null;
+      const billedTo =
+        extractedJson.billed_to ||
+        extractedJson.billTo?.name ||
+        extractedJson.billedTo ||
+        null;
       const dueDate = extractedJson.due_date || extractedJson.dueDate || null;
 
       // 2. Insert into 'invoices' table (tries with PO, terms, billed_to first, falls back if columns don't exist yet)
@@ -186,7 +198,11 @@ export class SupabaseService {
         .select()
         .single();
 
-      if (primaryInsert.error && (primaryInsert.error.code === '42703' || primaryInsert.error.message?.includes('column'))) {
+      if (
+        primaryInsert.error &&
+        (primaryInsert.error.code === '42703' ||
+          primaryInsert.error.message?.includes('column'))
+      ) {
         // Fallback: remote table might not have extended columns yet
         const retryInsert = await client
           .from('invoices')
@@ -207,7 +223,9 @@ export class SupabaseService {
           invoiceError.code === 'PGRST205' ||
           invoiceError.message?.includes('schema cache')
         ) {
-          console.warn('[SupabaseService] Table "invoices" not found, falling back to "ap_invoices"...');
+          console.warn(
+            '[SupabaseService] Table "invoices" not found, falling back to "ap_invoices"...',
+          );
           return this.insertLegacyApInvoice(extractedJson);
         }
         console.error('Error saving invoice header:', invoiceError);
@@ -221,7 +239,8 @@ export class SupabaseService {
       if (rawItems && rawItems.length > 0) {
         const lineItemsWithCode = rawItems.map((item: any) => ({
           invoice_id: invoiceId,
-          item_code: item.item_code || item.itemCode || item.code || item.sku || null,
+          item_code:
+            item.item_code || item.itemCode || item.code || item.sku || null,
           description: item.description || '',
           quantity: item.qty || item.quantity || 1,
           unit_price:
@@ -238,7 +257,10 @@ export class SupabaseService {
           .from('invoice_line_items')
           .insert(lineItemsWithCode);
 
-        if (lineError && (lineError.code === '42703' || lineError.message?.includes('column'))) {
+        if (
+          lineError &&
+          (lineError.code === '42703' || lineError.message?.includes('column'))
+        ) {
           const fallbackLineItems = lineItemsWithCode.map((item: any) => ({
             invoice_id: item.invoice_id,
             description: item.description,
@@ -250,14 +272,20 @@ export class SupabaseService {
             .from('invoice_line_items')
             .insert(fallbackLineItems);
           if (retryLineError) {
-            console.error('Error saving line items on fallback:', retryLineError);
+            console.error(
+              'Error saving line items on fallback:',
+              retryLineError,
+            );
           }
         } else if (lineError) {
           console.error('Error saving line items:', lineError);
         }
       }
 
-      console.log('[SupabaseService] Invoice saved successfully:', invoiceRecord);
+      console.log(
+        '[SupabaseService] Invoice saved successfully:',
+        invoiceRecord,
+      );
       return { success: true, invoiceId, data: invoiceRecord };
     } catch (err: any) {
       console.error('[SupabaseService] Unexpected save error:', err);
@@ -272,7 +300,12 @@ export class SupabaseService {
     invoice: APInvoiceJSON,
     pdfUrl?: string,
     file?: File | Blob,
-  ): Promise<{ success: boolean; invoiceId?: string; data?: any; error?: string }> {
+  ): Promise<{
+    success: boolean;
+    invoiceId?: string;
+    data?: any;
+    error?: string;
+  }> {
     return this.saveExtractedInvoice(invoice, invoice.rawOcrText, file);
   }
 
@@ -283,12 +316,14 @@ export class SupabaseService {
     invoice: APInvoiceJSON,
   ): Promise<{ success: boolean; data?: any; error?: string }> {
     const client = this.getClient();
-    if (!client) return { success: false, error: 'Supabase client not initialized' };
+    if (!client)
+      return { success: false, error: 'Supabase client not initialized' };
 
     try {
       const record = {
         invoice_number: invoice.invoiceNumber,
-        vendor_name: invoice.vendor?.name || invoice.vendorName || 'Unknown Vendor',
+        vendor_name:
+          invoice.vendor?.name || invoice.vendorName || 'Unknown Vendor',
         invoice_date: invoice.invoiceDate || null,
         due_date: invoice.dueDate || null,
         billed_to: invoice.billTo?.name || invoice.billedTo || null,
