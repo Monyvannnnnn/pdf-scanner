@@ -63,21 +63,8 @@ export class GeminiInvoiceService {
     fileOrDataUrl: File | string,
     onProgress?: (step: string, percent: number) => void,
   ): Promise<APInvoiceJSON> {
-    onProgress?.('Preparing document for AI Vision...', 15);
-    let base64Data: string;
-    let mimeType = 'image/jpeg';
-
-    if (typeof fileOrDataUrl === 'string') {
-      // Handle data URL string (e.g., from canvas or image preview)
-      const arr = fileOrDataUrl.split(',');
-      const mimeMatch = arr[0].match(/:(.*?);/);
-      if (mimeMatch) mimeType = mimeMatch[1];
-      base64Data = arr[1];
-    } else {
-      // Handle File object
-      mimeType = fileOrDataUrl.type || 'image/jpeg';
-      base64Data = await this.fileToBase64(fileOrDataUrl);
-    }
+    onProgress?.('Optimizing document for AI Vision...', 15);
+    const { base64: base64Data, mimeType } = await this.optimizeForAiVision(fileOrDataUrl);
 
     // Define strict schema matching your APInvoiceJSON interface
     const invoiceSchema: Schema = {
@@ -149,15 +136,17 @@ export class GeminiInvoiceService {
       required: ['grandTotal', 'invoiceNumber'],
     };
 
-    // Candidate models ordered by stability, quota availability & speed:
-    // 1. gemini-2.5-flash (primary, high free-tier quota, fast ~2.0s vision)
-    // 2. gemini-3.5-flash (fastest ~2.3s)
-    // 3. gemini-3.5-flash-lite (lightweight vision)
-    // 4. gemini-3.8-flash (fallback)
+    // Candidate models ordered by stability, global capacity & quota:
+    // 1. gemini-flash-latest (Google's smart load-balanced production alias)
+    // 2. gemini-2.5-flash (GA high-quota workhorse)
+    // 3. gemini-3.6-flash (active quota)
+    // 4. gemini-3.5-flash
+    // 5. gemini-3.8-flash
     const candidateModels = [
+      'gemini-flash-latest',
       'gemini-2.5-flash',
+      'gemini-3.6-flash',
       'gemini-3.5-flash',
-      'gemini-3.5-flash-lite',
       'gemini-3.8-flash',
     ];
 
@@ -170,49 +159,73 @@ export class GeminiInvoiceService {
       const modelDisplayName = model
         .replace('gemini-', 'Gemini ')
         .replace('-', ' ');
-      const progressPct = 30 + i * 15;
+      const progressPct = 30 + i * 12;
       onProgress?.(`Extracting with ${modelDisplayName}...`, progressPct);
 
-      try {
-        const apiCall = ai.models.generateContent({
-          model,
-          contents: [
-            {
-              inlineData: {
-                data: base64Data,
-                mimeType: mimeType,
+      // Attempt with 1 automatic retry if Google reports a 503 high-demand spike
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const apiCall = ai.models.generateContent({
+            model,
+            contents: [
+              {
+                inlineData: {
+                  data: base64Data,
+                  mimeType: mimeType,
+                },
               },
+              'Accurately extract all AP invoice details into the requested JSON schema. Extract PO Number, Payment Terms, Billed To customer, line item codes/SKUs, Subtotal, Tax Rate %, Tax Amount, and Grand Total. In rawOcrText, provide the full, verbatim line-by-line transcription of all text visible on the document separated with clean line breaks (\n). Preserve original characters where present, normalize dates to YYYY-MM-DD, and ensure math fields match.',
+            ],
+            config: {
+              responseMimeType: 'application/json',
+              responseSchema: invoiceSchema,
+              temperature: 0.0,
             },
-            'Accurately extract all AP invoice details into the requested JSON schema. Extract PO Number, Payment Terms, Billed To customer, line item codes/SKUs, Subtotal, Tax Rate %, Tax Amount, and Grand Total. In rawOcrText, provide the full, verbatim line-by-line transcription of all text visible on the document separated with clean line breaks (\n). Preserve original characters where present, normalize dates to YYYY-MM-DD, and ensure math fields match.',
-          ],
-          config: {
-            responseMimeType: 'application/json',
-            responseSchema: invoiceSchema,
-            temperature: 0.0,
-          },
-        });
+          });
 
-        // 20s timeout per candidate model so it never hangs indefinitely
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error(`Timeout: ${model} exceeded 20s`)),
-            20000,
-          ),
-        );
+          // 25s timeout per attempt
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(
+              () => reject(new Error(`Timeout: ${model} exceeded 25s`)),
+              25000,
+            ),
+          );
 
-        response = await Promise.race([apiCall, timeoutPromise]);
+          response = await Promise.race([apiCall, timeoutPromise]);
 
-        if (response?.text) {
-          onProgress?.('Parsing extracted invoice data...', 90);
-          break; // successfully extracted
+          if (response?.text) {
+            onProgress?.('Parsing extracted invoice data...', 90);
+            break; // successfully extracted
+          }
+        } catch (err: any) {
+          lastError = err;
+          const errMsg = String(err?.message || err || '');
+          const is503 =
+            errMsg.includes('503') ||
+            errMsg.includes('high demand') ||
+            errMsg.includes('UNAVAILABLE');
+
+          if (is503 && attempt === 1) {
+            console.warn(
+              `[GeminiInvoiceService] 503 spike on ${model}. Pausing 1.5s and retrying...`,
+            );
+            onProgress?.(
+              `Server busy on ${modelDisplayName}, retrying...`,
+              progressPct,
+            );
+            await new Promise((r) => setTimeout(r, 1500));
+            continue; // retry once
+          }
+
+          console.warn(
+            `[GeminiInvoiceService] Model ${model} issue (${errMsg}). Switching to next model...`,
+          );
+          break; // move to next model
         }
-      } catch (err: any) {
-        lastError = err;
-        const errMsg = String(err?.message || err || '');
-        console.warn(
-          `[GeminiInvoiceService] Model ${model} issue (${errMsg}). Switching to next model...`,
-        );
-        continue;
+      }
+
+      if (response?.text) {
+        break; // successfully extracted
       }
     }
 
@@ -352,6 +365,78 @@ export class GeminiInvoiceService {
       reader.readAsDataURL(file);
       reader.onload = () => resolve((reader.result as string).split(',')[1]);
       reader.onerror = (error) => reject(error);
+    });
+  }
+
+  /**
+   * Resizes & compresses document image to max 1400px at 82% JPEG quality.
+   * Reduces 6MB-12MB mobile camera photos to ~120KB, preventing Gemini
+   * 503 "High Demand" server overloads and network timeouts.
+   */
+  private async optimizeForAiVision(
+    fileOrDataUrl: File | string,
+  ): Promise<{ base64: string; mimeType: string }> {
+    let rawDataUrl = '';
+    if (typeof fileOrDataUrl === 'string') {
+      rawDataUrl = fileOrDataUrl;
+    } else {
+      rawDataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(fileOrDataUrl);
+      });
+    }
+
+    if (
+      typeof window === 'undefined' ||
+      !rawDataUrl.startsWith('data:image') ||
+      typeof document === 'undefined'
+    ) {
+      const parts = rawDataUrl.split(',');
+      const mimeMatch = parts[0]?.match(/:(.*?);/);
+      return {
+        base64: parts[1] || rawDataUrl,
+        mimeType: mimeMatch ? mimeMatch[1] : 'image/jpeg',
+      };
+    }
+
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 1400;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          const parts = rawDataUrl.split(',');
+          resolve({ base64: parts[1] || rawDataUrl, mimeType: 'image/jpeg' });
+          return;
+        }
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        const compressed = canvas.toDataURL('image/jpeg', 0.82);
+        const parts = compressed.split(',');
+        resolve({ base64: parts[1], mimeType: 'image/jpeg' });
+      };
+      img.onerror = () => {
+        const parts = rawDataUrl.split(',');
+        resolve({ base64: parts[1] || rawDataUrl, mimeType: 'image/jpeg' });
+      };
+      img.src = rawDataUrl;
     });
   }
 }
