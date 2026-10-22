@@ -149,11 +149,13 @@ export class GeminiInvoiceService {
       required: ['grandTotal', 'invoiceNumber'],
     };
 
-    // Candidate models ordered by speed & availability for vision extraction:
-    // 1. gemini-3.5-flash (fastest ~2.3s, active quota)
-    // 2. gemini-3.5-flash-lite (fast ~2.0s)
-    // 3. gemini-3.8-flash (fallback)
+    // Candidate models ordered by stability, quota availability & speed:
+    // 1. gemini-2.5-flash (primary, high free-tier quota, fast ~2.0s vision)
+    // 2. gemini-3.5-flash (fastest ~2.3s)
+    // 3. gemini-3.5-flash-lite (lightweight vision)
+    // 4. gemini-3.8-flash (fallback)
     const candidateModels = [
+      'gemini-2.5-flash',
       'gemini-3.5-flash',
       'gemini-3.5-flash-lite',
       'gemini-3.8-flash',
@@ -168,7 +170,7 @@ export class GeminiInvoiceService {
       const modelDisplayName = model
         .replace('gemini-', 'Gemini ')
         .replace('-', ' ');
-      const progressPct = 30 + i * 20;
+      const progressPct = 30 + i * 15;
       onProgress?.(`Extracting with ${modelDisplayName}...`, progressPct);
 
       try {
@@ -190,11 +192,11 @@ export class GeminiInvoiceService {
           },
         });
 
-        // 12s timeout per candidate model so it never hangs indefinitely
+        // 20s timeout per candidate model so it never hangs indefinitely
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(
-            () => reject(new Error(`Timeout: ${model} exceeded 12s`)),
-            12000,
+            () => reject(new Error(`Timeout: ${model} exceeded 20s`)),
+            20000,
           ),
         );
 
